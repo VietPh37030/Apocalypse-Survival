@@ -47,6 +47,7 @@ export const INITIAL_GAME_STATE: GameState = {
     meds: 3,
     radioPart: 0,
     wrench: 0,
+    gasMask: 0,
   },
   day: 1,
   log: [{ day: 1, text: 'Trò chơi bắt đầu. Cả gia đình đang ở trong một căn hầm trú ẩn an toàn, ít nhất là cho bây giờ.', type: 'narration' }],
@@ -61,6 +62,8 @@ export const INITIAL_GAME_STATE: GameState = {
   intro: '',
   currentDialogue: null,
   canScavenge: true,
+  talkedToToday: [],
+  scoutingCharacterId: null,
 };
 
 export const VICTORY_CONDITION = {

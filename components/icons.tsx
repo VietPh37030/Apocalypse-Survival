@@ -59,3 +59,10 @@ export const WrenchIcon = () => (
         <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0L8 5.482a4.5 4.5 0 00-1.598 1.598L4.17 8.51c-1.56.38-1.56 2.6 0 2.98l2.23.54a4.5 4.5 0 001.598 1.598l.54 2.23c.38 1.56 2.6 1.56 2.98 0l.54-2.23a4.5 4.5 0 001.598-1.598l2.23-.54c1.56-.38 1.56-2.6 0-2.98l-2.23-.54a4.5 4.5 0 00-1.598-1.598L11.49 3.17z" clipRule="evenodd" />
     </svg>
 );
+
+export const GasMaskIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 inline-block" viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16zM5.5 10a4.5 4.5 0 019 0H5.5zM10 12a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+      <path d="M10 12a1 1 0 01-1-1V9a1 1 0 112 0v2a1 1 0 01-1 1z" />
+    </svg>
+);

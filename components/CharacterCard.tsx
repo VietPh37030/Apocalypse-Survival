@@ -7,6 +7,7 @@ interface CharacterCardProps {
   inventory: Inventory;
   onUseItem: (characterId: string, item: 'food' | 'water' | 'meds') => void;
   onTalk: (characterId: string) => void;
+  talkedToToday: string[];
 }
 
 const getCharacterStatus = (stats: Stats): { text: string; color: string } => {
@@ -33,19 +34,23 @@ const ActionButton: React.FC<{
   onClick: () => void;
   disabled: boolean;
   children: React.ReactNode;
-}> = ({ onClick, disabled, children }) => (
+  title?: string;
+}> = ({ onClick, disabled, children, title }) => (
   <button
     onClick={onClick}
     disabled={disabled}
+    title={title}
     className="px-2 py-1 text-xs font-bold text-green-300 bg-green-900/50 border border-green-600/50 rounded hover:bg-green-800 disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
   >
     {children}
   </button>
 );
 
-const CharacterCard: React.FC<CharacterCardProps> = ({ character, inventory, onUseItem, onTalk }) => {
+const CharacterCard: React.FC<CharacterCardProps> = ({ character, inventory, onUseItem, onTalk, talkedToToday }) => {
   const isDead = !character.isAlive;
   const isPlayer = character.id === 'A';
+  const hasBeenTalkedTo = talkedToToday.includes(character.id);
+
   const cardClasses = `bg-black/30 border border-green-700/50 p-3 rounded-lg shadow-lg transition-all duration-300 ${isDead ? 'grayscale opacity-50' : ''}`;
   const status = getCharacterStatus(character.stats);
   
@@ -84,7 +89,11 @@ const CharacterCard: React.FC<CharacterCardProps> = ({ character, inventory, onU
           </div>
           <div className="mt-3 pt-2 border-t border-green-700/30 flex justify-end space-x-2">
             {!isPlayer && (
-              <ActionButton onClick={() => onTalk(character.id)} disabled={false}>
+              <ActionButton 
+                onClick={() => onTalk(character.id)} 
+                disabled={hasBeenTalkedTo}
+                title={hasBeenTalkedTo ? "Bạn đã nói chuyện với người này hôm nay." : "Trò chuyện để giảm căng thẳng"}
+              >
                 Trò chuyện
               </ActionButton>
             )}

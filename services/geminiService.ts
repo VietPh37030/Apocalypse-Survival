@@ -13,7 +13,7 @@ const getGameStateSummary = (state: GameState): string => {
     )
     .join('\n');
   
-  const inventorySummary = `Inventory: Food ${state.inventory.food}, Water ${state.inventory.water}, Meds ${state.inventory.meds}, Radio Parts ${state.inventory.radioPart}, Wrench ${state.inventory.wrench}.`;
+  const inventorySummary = `Inventory: Food ${state.inventory.food}, Water ${state.inventory.water}, Meds ${state.inventory.meds}, Radio Parts ${state.inventory.radioPart}, Wrench ${state.inventory.wrench}, Gas Masks ${state.inventory.gasMask}.`;
 
   return `Day ${state.day}. \nCharacters:\n${charactersSummary}\n${inventorySummary}`;
 };
@@ -32,7 +32,7 @@ const eventSchema = {
                     text: { type: Type.STRING },
                     requiredItem: { 
                         type: Type.STRING,
-                        enum: ['food', 'water', 'meds', 'radioPart', 'wrench', 'none'],
+                        enum: ['food', 'water', 'meds', 'radioPart', 'wrench', 'gasMask', 'none'],
                         description: "Set to 'none' if no item is required."
                     },
                 },
@@ -66,7 +66,7 @@ const outcomeSchema = {
             items: {
                 type: Type.OBJECT,
                 properties: {
-                    item: { type: Type.STRING, enum: ['food', 'water', 'meds', 'radioPart', 'wrench'] },
+                    item: { type: Type.STRING, enum: ['food', 'water', 'meds', 'radioPart', 'wrench', 'gasMask'] },
                     change: { type: Type.NUMBER, description: "Positive or negative change amount." },
                 },
                 required: ['item', 'change'],
@@ -231,7 +231,7 @@ export const generateScavengeOutcome = async (gameState: GameState): Promise<Out
 
     Hãy mô tả kết quả của cuộc tìm kiếm này.
     - Mô tả hành động lục lọi và kết quả một cách hấp dẫn.
-    - Kết quả có thể là: tìm thấy vật phẩm hữu ích (food, water, meds, radioPart, wrench), không tìm thấy gì, hoặc gặp phải một rủi ro (làm bị thương một người, gây ra bệnh tật, làm hỏng thứ gì đó).
+    - Kết quả có thể là: tìm thấy vật phẩm hữu ích (food, water, meds, radioPart, wrench, gasMask), không tìm thấy gì, hoặc gặp phải một rủi ro (làm bị thương một người, gây ra bệnh tật, làm hỏng thứ gì đó).
     - Kết quả phải logic. Nếu họ đã có nhiều đồ, khả năng tìm thấy thêm sẽ thấp hơn. Nếu có người đang ốm yếu, họ có thể gặp tai nạn.
     - Xác định hậu quả: thay đổi chỉ số, kho đồ, và bệnh tật.
     - Chỉ trả về đối tượng JSON.
@@ -287,5 +287,48 @@ export const generateCharacterDialogue = async (gameState: GameState, targetChar
   } catch (error) {
     console.error("Error generating character dialogue:", error);
     return `${targetCharacter.name} không muốn nói chuyện lúc này.`;
+  }
+};
+
+export const generateScoutOutcome = async (gameState: GameState, scout: Character): Promise<Outcome | null> => {
+    const prompt = `
+    Bạn là người quản trò cho game sinh tồn "Hy Vọng Cuối Cùng" ở Việt Nam.
+    Người chơi (Ben) đã cử ${scout.name} ra ngoài trinh sát vùng đất hoang tàn bên ngoài hầm, được trang bị một chiếc mặt nạ phòng độc.
+
+    Trạng thái game hiện tại:
+    ${getGameStateSummary(gameState)}
+
+    Thông tin về người đi trinh sát (${scout.name}):
+    Health: ${scout.stats.health}, Morale: ${scout.stats.morale}, Stress: ${scout.stats.stress}
+    ${scout.sickness ? `Currently sick with ${scout.sickness.name}`: ''}
+
+    Hãy mô tả kết quả của chuyến đi này.
+    - Mô tả chi tiết hành trình và những gì họ tìm thấy hoặc trải qua.
+    - Kết quả phải logic dựa trên chỉ số của người đi. Người yếu ớt (health thấp) có khả năng gặp nguy hiểm cao hơn. Người có tinh thần (morale) cao có thể tìm được thứ gì đó tạo hy vọng.
+    - Các kết quả có thể bao gồm:
+        - Tìm thấy nhiều vật phẩm giá trị (food, water, meds, radioPart, gasMask).
+        - Gặp một sự kiện đặc biệt (tìm thấy một ghi chú, thấy dấu hiệu của người khác).
+        - Bị thương hoặc mắc bệnh (đặc biệt là radiation_sickness).
+        - Không tìm thấy gì và chỉ thêm mệt mỏi, căng thẳng.
+    - Cung cấp mô tả hấp dẫn và các thay đổi cụ thể về chỉ số, vật phẩm, bệnh tật cho ${scout.name} hoặc cho cả gia đình.
+    - Chỉ trả về đối tượng JSON.
+  `;
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: outcomeSchema,
+      },
+    });
+    const jsonText = response.text.trim();
+    return JSON.parse(jsonText) as Outcome;
+  } catch (error) {
+    console.error("Error generating scout outcome:", error);
+    return {
+        outcomeDescription: `${scout.name} trở về tay không. Bên ngoài chỉ có sự im lặng chết chóc và những cơn gió bụi. Chuyến đi chỉ làm họ thêm kiệt sức.`,
+        statChanges: [{ characterId: scout.id, stat: 'stress', change: 10}, { characterId: scout.id, stat: 'hunger', change: -15}]
+    };
   }
 };

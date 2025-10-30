@@ -1,4 +1,4 @@
-export type ResourceKey = 'food' | 'water' | 'meds' | 'radioPart' | 'wrench';
+export type ResourceKey = 'food' | 'water' | 'meds' | 'radioPart' | 'wrench' | 'gasMask';
 
 export type Inventory = Record<ResourceKey, number>;
 
@@ -24,6 +24,7 @@ export interface Sickness {
   };
   longTermEffects: string;
   cure: string;
+  worsensTo?: string; // ID of the sickness it can progress to
 }
 
 export interface Character {
@@ -100,4 +101,6 @@ export interface GameState {
   intro: string;
   currentDialogue: string | null;
   canScavenge: boolean;
+  talkedToToday: string[];
+  scoutingCharacterId: string | null;
 }
