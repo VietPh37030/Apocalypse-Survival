@@ -1,0 +1,75 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nuclear Shelter Survival</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=VT323&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Special Elite', cursive;
+        background-color: #1a1a1a;
+        color: #f0f0f0;
+      }
+      .font-display {
+        font-family: 'VT323', monospace;
+      }
+      .crt-effect::before {
+        content: " ";
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        right: 0;
+        background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+        z-index: 2;
+        background-size: 100% 2px, 3px 100%;
+        pointer-events: none;
+        animation: flicker 0.15s infinite;
+      }
+      @keyframes flicker {
+        0% { opacity: 0.27861; }
+        5% { opacity: 0.34769; }
+        10% { opacity: 0.54165; }
+        15% { opacity: 0.93604; }
+        20% { opacity: 0.92643; }
+        25% { opacity: 0.38312; }
+        30% { opacity: 0.5143; }
+        35% { opacity: 0.35805; }
+        40% { opacity: 0.51586; }
+        45% { opacity: 0.9934; }
+        50% { opacity: 0.92383; }
+        55% { opacity: 0.0401; }
+        60% { opacity: 0.26003; }
+        65% { opacity: 0.35832; }
+        70% { opacity: 0.50523; }
+        75% { opacity: 0.36395; }
+        80% { opacity: 0.22238; }
+        85% { opacity: 0.25991; }
+        90% { opacity: 0.3563; }
+        95% { opacity: 0.40013; }
+        100% { opacity: 0.9903; }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.28.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
+  }
+}
+</script>
+</head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
