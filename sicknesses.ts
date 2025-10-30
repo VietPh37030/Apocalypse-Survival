@@ -10,6 +10,7 @@ export const SICKNESSES: Record<string, Sickness> = {
     effects: {
       health: -5,
       morale: -5,
+      mood: -5,
     },
     longTermEffects: "Nếu không chữa trị, có thể dẫn đến suy nhược kéo dài hoặc viêm phổi.",
     cure: "Nghỉ ngơi. Thuốc có thể giúp đẩy nhanh quá trình phục hồi.",
@@ -24,6 +25,7 @@ export const SICKNESSES: Record<string, Sickness> = {
       health: -15,
       hunger: -10,
       thirst: -20,
+      mood: -10,
     },
     longTermEffects: "Suy kiệt nghiêm trọng, có thể dẫn đến nhiễm trùng máu nếu không được bù nước.",
     cure: "Cần uống nhiều nước và nghỉ ngơi. Thuốc sẽ giúp giảm triệu chứng.",
@@ -37,6 +39,7 @@ export const SICKNESSES: Record<string, Sickness> = {
     effects: {
       stress: 15,
       morale: -10,
+      mood: -15,
     },
     longTermEffects: "Có thể dẫn đến hành vi khó lường và xung đột bạo lực, hoặc hóa điên.",
     cure: "Cần sự an ủi, giữ tinh thần lạc quan. Không có thuốc chữa trực tiếp.",
@@ -50,6 +53,7 @@ export const SICKNESSES: Record<string, Sickness> = {
     effects: {
       health: -10,
       stress: 10,
+      mood: -10,
     },
     longTermEffects: "Tổn thương vĩnh viễn cho cơ thể, tăng nguy cơ tử vong.",
     cure: "Gần như không thể chữa trong điều kiện hầm. Thuốc chỉ có thể làm chậm quá trình.",
@@ -66,6 +70,7 @@ export const SICKNESSES: Record<string, Sickness> = {
       health: -15,
       hunger: -10,
       stress: 10,
+      mood: -10,
     },
     longTermEffects: "Tổn thương phổi vĩnh viễn, có thể gây tử vong.",
     cure: "Bắt buộc phải dùng thuốc và nghỉ ngơi hoàn toàn.",
@@ -79,6 +84,7 @@ export const SICKNESSES: Record<string, Sickness> = {
       health: -25,
       thirst: -15,
       stress: 20,
+      mood: -20,
     },
     longTermEffects: "Tỉ lệ tử vong cực kỳ cao nếu không có thuốc mạnh.",
     cure: "Cần thuốc ngay lập tức để có cơ hội sống sót.",
@@ -91,6 +97,7 @@ export const SICKNESSES: Record<string, Sickness> = {
     effects: {
       stress: 30,
       morale: -30,
+      mood: -40,
     },
     longTermEffects: "Trở thành gánh nặng vĩnh viễn cho gia đình.",
     cure: "Không thể chữa khỏi trong hầm.",
@@ -103,6 +110,7 @@ export const SICKNESSES: Record<string, Sickness> = {
     effects: {
       health: -30,
       morale: -20,
+      mood: -30,
     },
     longTermEffects: "Cái chết là không thể tránh khỏi.",
     cure: "Không có cách chữa. Chỉ có thể cầu nguyện.",

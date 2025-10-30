@@ -25,7 +25,7 @@ const ScoutSelectionModal: React.FC<ScoutSelectionModalProps> = ({ characters, o
               <div>
                 <p className="font-bold">{char.name}</p>
                 <p className="text-xs text-gray-400">
-                  SK: {char.stats.health} | TT: {char.stats.morale} | CT: {char.stats.stress}
+                  SK: {char.stats.health} | TT: {char.stats.morale} | Mood: {char.stats.mood} | CT: {char.stats.stress}
                 </p>
               </div>
                {char.sickness && <span className="text-xs text-yellow-400 font-bold">Bị bệnh</span>}

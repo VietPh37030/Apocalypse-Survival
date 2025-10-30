@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Character, GameState, Choice, GameEvent, ResourceKey, LogEntry, Notification } from './types';
+// FIX: Import Outcome to properly type the response from Gemini API.
+import type { Character, GameState, Choice, GameEvent, ResourceKey, LogEntry, Notification, Stats, ShelterState, Outcome } from './types';
 import { INITIAL_GAME_STATE, MAX_STAT, MIN_STAT, VICTORY_CONDITION } from './constants';
 import * as geminiService from './services/geminiService';
 import { SICKNESSES } from './sicknesses';
@@ -9,21 +10,23 @@ import GameOverScreen from './components/GameOverScreen';
 import LoadingOverlay from './components/LoadingOverlay';
 import DialogueModal from './components/DialogueModal';
 import ScoutSelectionModal from './components/ScoutSelectionModal';
+import EnvironmentStatus from './components/EnvironmentStatus';
+import ShelterManagement from './components/ShelterManagement';
 import { FoodIcon, WaterIcon, MedsIcon, RadioPartIcon, WrenchIcon, GasMaskIcon } from './components/icons';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(INITIAL_GAME_STATE);
-  const { characters, inventory, day, log, currentEvent, gameOver, isLoading, gameStarted, currentDialogue, canScavenge, talkedToToday } = gameState;
+  const { characters, inventory, day, log, currentEvent, gameOver, isLoading, gameStarted, currentDialogue, canScavenge, talkedToToday, shelterState, radioUsedToday } = gameState;
   const [selectedLogDay, setSelectedLogDay] = useState(1);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isScoutModalOpen, setScoutModalOpen] = useState(false);
 
-  const addNotification = (text: string, type: 'gain' | 'loss') => {
+  const addNotification = (text: string, type: 'gain' | 'loss' | 'info') => {
     const newNotification: Notification = { id: Date.now(), text, type };
     setNotifications(prev => [...prev, newNotification]);
     setTimeout(() => {
         setNotifications(prev => prev.filter(n => n.id !== newNotification.id));
-    }, 2000); // Notification lasts for 2 seconds
+    }, 2500);
   };
   
   const startGame = async () => {
@@ -45,7 +48,7 @@ const App: React.FC = () => {
   const applyStatChange = (
     chars: Character[],
     characterId: string,
-    stat: keyof Character['stats'],
+    stat: keyof Stats,
     change: number
   ): Character[] => {
     return chars.map(c => {
@@ -58,16 +61,18 @@ const App: React.FC = () => {
     });
   };
 
-  const processOutcome = (outcome: any, currentState: GameState) => {
+  // FIX: Properly type `outcome` to leverage TypeScript's type inference and catch errors.
+  const processOutcome = (outcome: Outcome, currentState: GameState) => {
     let updatedCharacters = [...currentState.characters];
     let updatedInventory = { ...currentState.inventory };
+    let updatedShelterState = { ...currentState.shelterState };
     const outcomeLogEntries: LogEntry[] = [];
   
-    outcome.statChanges?.forEach((sc: any) => {
+    outcome.statChanges?.forEach((sc) => {
       updatedCharacters = applyStatChange(updatedCharacters, sc.characterId, sc.stat, sc.change);
     });
   
-    outcome.sicknessChanges?.forEach((sc: any) => {
+    outcome.sicknessChanges?.forEach((sc) => {
       updatedCharacters = updatedCharacters.map(c => {
         if (c.id === sc.characterId) {
           if (sc.sicknessId === 'none') {
@@ -88,7 +93,8 @@ const App: React.FC = () => {
       });
     });
   
-    outcome.inventoryChanges?.forEach((ic: any) => {
+    // FIX: With `outcome` typed, `ic.item` is correctly inferred as `ResourceKey`, fixing the indexing error.
+    outcome.inventoryChanges?.forEach((ic) => {
       if (ic.change > 0) {
         addNotification(`+${ic.change} ${resourceTranslations[ic.item]}`, 'gain');
       } else {
@@ -96,22 +102,45 @@ const App: React.FC = () => {
       }
       updatedInventory[ic.item] = Math.max(0, updatedInventory[ic.item] + ic.change);
     });
+
+    // FIX: Refactor shelter state changes to be type-safe. The original code caused a type error
+    // because TypeScript couldn't guarantee type correctness when assigning to a computed property 
+    // on an object with mixed-type properties. This also fixes bugs related to optional `change` and `value` properties.
+    outcome.shelterStateChanges?.forEach((sc) => {
+        const prop = sc.property;
+        if (prop === 'integrity' || prop === 'radioDurability' || prop === 'waterFilterDurability') {
+            if (typeof sc.change === 'number') {
+                const currentValue = updatedShelterState[prop];
+                updatedShelterState[prop] = sc.absolute ? sc.change : Math.max(0, Math.min(100, currentValue + sc.change));
+            }
+        } else { // It's a string property ('radiationLevel' or 'airQuality')
+            if (typeof sc.value === 'string') {
+                // We have to trust the AI's string value.
+                if (prop === 'radiationLevel') {
+                    updatedShelterState.radiationLevel = sc.value as ShelterState['radiationLevel'];
+                } else if (prop === 'airQuality') {
+                    updatedShelterState.airQuality = sc.value as ShelterState['airQuality'];
+                }
+            }
+        }
+        outcomeLogEntries.push({ day: currentState.day, text: `[Trạng thái hầm] ${prop} đã thay đổi.`, type: 'status' });
+    });
   
-    return { updatedCharacters, updatedInventory, outcomeLogEntries };
+    return { updatedCharacters, updatedInventory, updatedShelterState, outcomeLogEntries };
   };
 
   const handleNextDay = async (scoutingCharacterId: string | null = null) => {
-    const previousState = { ...gameState, scoutingCharacterId }; // Capture state before advancing day
+    const previousState = { ...gameState, scoutingCharacterId };
     const nextDayNumber = previousState.day + 1;
 
-    setGameState(prev => ({ ...prev, isLoading: true, currentEvent: null, day: nextDayNumber, canScavenge: true, talkedToToday: [], scoutingCharacterId: null }));
+    setGameState(prev => ({ ...prev, isLoading: true, currentEvent: null, day: nextDayNumber, canScavenge: true, talkedToToday: [], scoutingCharacterId: null, radioUsedToday: false }));
     setSelectedLogDay(nextDayNumber);
 
     let updatedCharacters = [...previousState.characters];
     let newLogEntries: LogEntry[] = [{ day: nextDayNumber, text: `--- Ngày ${nextDayNumber} ---`, type: 'narration' }];
     let updatedInventory = { ...previousState.inventory };
+    let updatedShelterState = { ...previousState.shelterState };
 
-    // 1. Resolve scouting mission from previous day
     if (scoutingCharacterId) {
         const scout = updatedCharacters.find(c => c.id === scoutingCharacterId);
         if (scout) {
@@ -119,30 +148,38 @@ const App: React.FC = () => {
             if (scoutOutcome) {
                 const scoutLog: LogEntry = { day: nextDayNumber, text: `[Trinh sát] ${scoutOutcome.outcomeDescription}`, type: 'scavenge' };
                 newLogEntries.push(scoutLog);
-                const { updatedCharacters: charsAfterScout, updatedInventory: invAfterScout, outcomeLogEntries } = processOutcome(scoutOutcome, { ...previousState, characters: updatedCharacters, inventory: updatedInventory, day: nextDayNumber });
-                updatedCharacters = charsAfterScout;
-                updatedInventory = invAfterScout;
-                newLogEntries.push(...outcomeLogEntries);
+                const { updatedCharacters: chars, updatedInventory: inv, updatedShelterState: shelter, outcomeLogEntries: logs } = processOutcome(scoutOutcome, { ...previousState, characters: updatedCharacters, inventory: updatedInventory, shelterState: updatedShelterState, day: nextDayNumber });
+                updatedCharacters = chars;
+                updatedInventory = inv;
+                updatedShelterState = shelter;
+                newLogEntries.push(...logs);
             }
         }
     }
 
-    // 2. Daily stat decay and sickness checks
+    // Daily decay and checks
+    updatedShelterState.radioDurability = Math.max(0, updatedShelterState.radioDurability - (Math.random() * 3 + 1));
+    updatedShelterState.waterFilterDurability = Math.max(0, updatedShelterState.waterFilterDurability - (Math.random() * 4 + 1));
+    
+    if (updatedShelterState.waterFilterDurability < 30) {
+        newLogEntries.push({ day: nextDayNumber, text: `Máy lọc nước kêu rít lên, có vẻ nó sắp hỏng.`, type: 'status' });
+    }
+
     updatedCharacters = updatedCharacters.map(c => {
         if (!c.isAlive) return c;
-
         let newStats = { ...c.stats };
         let currentSickness = c.sickness ? { ...c.sickness } : null;
+        let thirstDecay = 15;
+        if(updatedShelterState.waterFilterDurability < 50) thirstDecay = 20; // Less effective filter
 
-        // Standard decay
         newStats.hunger = Math.max(MIN_STAT, newStats.hunger - 10);
-        newStats.thirst = Math.max(MIN_STAT, newStats.thirst - 15);
+        newStats.thirst = Math.max(MIN_STAT, newStats.thirst - thirstDecay);
 
-        if (newStats.hunger <= MIN_STAT || newStats.thirst <= MIN_STAT) {
-            newStats.health = Math.max(MIN_STAT, newStats.health - 20);
-        }
-      
-        // Sickness effects
+        if (newStats.hunger <= MIN_STAT || newStats.thirst <= MIN_STAT) newStats.health = Math.max(MIN_STAT, newStats.health - 20);
+        if (newStats.stress > 60) newStats.mood = Math.max(MIN_STAT, newStats.mood - 5);
+        if (newStats.morale < 40) newStats.mood = Math.max(MIN_STAT, newStats.mood - 5);
+        else if (newStats.morale > 70) newStats.mood = Math.min(MAX_STAT, newStats.mood + 5);
+
         if (currentSickness) {
             Object.entries(currentSickness.effects).forEach(([stat, change]) => {
                 newStats[stat as keyof typeof newStats] = Math.max(MIN_STAT, Math.min(MAX_STAT, newStats[stat as keyof typeof newStats] + change));
@@ -155,9 +192,6 @@ const App: React.FC = () => {
                     if (worseSickness) {
                         newLogEntries.push({ day: nextDayNumber, text: `Bệnh tình của ${c.name} đã trở nên tồi tệ hơn! Bây giờ họ bị ${worseSickness.name}.`, type: 'status' });
                         currentSickness = { ...worseSickness };
-                    } else {
-                        newLogEntries.push({ day: nextDayNumber, text: `${c.name} đã tự hồi phục khỏi ${currentSickness.name}!`, type: 'status' });
-                        currentSickness = null;
                     }
                 } else {
                      newLogEntries.push({ day: nextDayNumber, text: `${c.name} đã tự hồi phục khỏi ${currentSickness.name}!`, type: 'status' });
@@ -165,11 +199,9 @@ const App: React.FC = () => {
                 }
             }
         }
-
         return { ...c, stats: newStats, sickness: currentSickness };
     });
     
-    // 3. Check for death
     updatedCharacters = updatedCharacters.map(c => {
       if (c.isAlive && c.stats.health <= MIN_STAT) {
         newLogEntries.push({ day: nextDayNumber, text: `${c.name} đã không qua khỏi...`, type: 'status' });
@@ -178,29 +210,23 @@ const App: React.FC = () => {
       return c;
     });
 
-    const stateForAI = { ...gameState, characters: updatedCharacters, inventory: updatedInventory, day: nextDayNumber, log: [...newLogEntries, ...log] };
-
+    const stateForAI = { ...gameState, characters: updatedCharacters, inventory: updatedInventory, shelterState: updatedShelterState, day: nextDayNumber, log: [...newLogEntries, ...log] };
     const dialogue = await geminiService.generateFamilyDialogue(stateForAI);
     
     setGameState(prev => ({
       ...prev,
       characters: updatedCharacters,
       inventory: updatedInventory,
+      shelterState: updatedShelterState,
       log: [...newLogEntries, ...prev.log],
       currentDialogue: dialogue,
     }));
 
-    // Check for game over (all dead)
     if (updatedCharacters.every(c => !c.isAlive)) {
-      setGameState(prev => ({
-        ...prev,
-        isLoading: false,
-        gameOver: { isGameOver: true, isWin: false, message: 'Tất cả mọi người đã chết. Hy vọng đã lụi tàn.' }
-      }));
+      setGameState(prev => ({ ...prev, isLoading: false, gameOver: { isGameOver: true, isWin: false, message: 'Tất cả mọi người đã chết. Hy vọng đã lụi tàn.' } }));
       return;
     }
     
-    // 4. Fetch new event
     const event = await geminiService.generateNewEvent(stateForAI);
     if (event) {
       const eventLogEntry: LogEntry = { day: nextDayNumber, text: event.eventDescription, type: 'event' };
@@ -214,62 +240,34 @@ const App: React.FC = () => {
   const handleChoice = async (choice: Choice) => {
     if (!currentEvent) return;
     setGameState(prev => ({ ...prev, isLoading: true, currentEvent: null }));
-
     let tempState = { ...gameState };
-
     if (choice.requiredItem && tempState.inventory[choice.requiredItem] > 0) {
         addNotification(`-1 ${resourceTranslations[choice.requiredItem]}`, 'loss');
         tempState.inventory = { ...tempState.inventory, [choice.requiredItem]: tempState.inventory[choice.requiredItem] - 1 };
     }
-
     const outcome = await geminiService.generateChoiceOutcome(tempState, currentEvent, choice);
-
     if (outcome) {
-        const { updatedCharacters, updatedInventory, outcomeLogEntries } = processOutcome(outcome, tempState);
-        
-        const comprehensiveLogEntry: LogEntry = {
-            day,
-            text: `[Sự kiện: ${currentEvent.eventTitle}] Lựa chọn "${choice.text}" dẫn đến: ${outcome.outcomeDescription}`,
-            type: 'outcome'
-        };
-
-        setGameState(prev => ({
-            ...prev,
-            characters: updatedCharacters,
-            inventory: updatedInventory,
-            log: [comprehensiveLogEntry, ...outcomeLogEntries, ...prev.log],
-        }));
-        
+        const { updatedCharacters, updatedInventory, updatedShelterState, outcomeLogEntries } = processOutcome(outcome, tempState);
+        const comprehensiveLogEntry: LogEntry = { day, text: `[Sự kiện: ${currentEvent.eventTitle}] Lựa chọn "${choice.text}" dẫn đến: ${outcome.outcomeDescription}`, type: 'outcome' };
+        setGameState(prev => ({ ...prev, characters: updatedCharacters, inventory: updatedInventory, shelterState: updatedShelterState, log: [comprehensiveLogEntry, ...outcomeLogEntries, ...prev.log] }));
         if(updatedInventory.radioPart >= VICTORY_CONDITION.radioParts && updatedInventory.wrench >= VICTORY_CONDITION.wrench){
-             setGameState(prev => ({
-                ...prev, isLoading: false, currentEvent: null,
-                gameOver: { isGameOver: true, isWin: true, message: 'Bạn đã sửa được radio và gọi cứu trợ thành công! Bạn đã sống sót.' }
-            }));
+             setGameState(prev => ({ ...prev, isLoading: false, currentEvent: null, gameOver: { isGameOver: true, isWin: true, message: 'Bạn đã sửa được radio và gọi cứu trợ thành công! Bạn đã sống sót.' } }));
             return;
         }
-
     } else {
         const errorLog: LogEntry = { day, text: "Có lỗi xảy ra, sự kiện không có kết quả.", type: 'status' };
         setGameState(prev => ({ ...prev, log: [errorLog, ...prev.log] }));
     }
-    
     setGameState(prev => ({ ...prev, isLoading: false, currentEvent: null }));
   };
   
   const handleScavenge = async () => {
     setGameState(prev => ({ ...prev, isLoading: true, canScavenge: false }));
     const outcome = await geminiService.generateScavengeOutcome(gameState);
-
     if (outcome) {
         const scavengeLog: LogEntry = { day, text: `[Lục lọi] ${outcome.outcomeDescription}`, type: 'scavenge' };
-        const { updatedCharacters, updatedInventory, outcomeLogEntries } = processOutcome(outcome, gameState);
-
-        setGameState(prev => ({
-            ...prev,
-            characters: updatedCharacters,
-            inventory: updatedInventory,
-            log: [scavengeLog, ...outcomeLogEntries, ...prev.log]
-        }));
+        const { updatedCharacters, updatedInventory, updatedShelterState, outcomeLogEntries } = processOutcome(outcome, gameState);
+        setGameState(prev => ({ ...prev, characters: updatedCharacters, inventory: updatedInventory, shelterState: updatedShelterState, log: [scavengeLog, ...outcomeLogEntries, ...prev.log] }));
     }
     setGameState(prev => ({ ...prev, isLoading: false }));
   };
@@ -278,38 +276,29 @@ const App: React.FC = () => {
     setScoutModalOpen(false);
     const scoutName = characters.find(c => c.id === characterId)?.name || 'Ai đó';
     const logEntry: LogEntry = { day, text: `${scoutName} đeo mặt nạ phòng độc và bước ra thế giới bên ngoài. Họ sẽ trở về vào ngày mai.`, type: 'status' };
-    
-    setGameState(prev => ({
-        ...prev,
-        inventory: { ...prev.inventory, gasMask: prev.inventory.gasMask - 1 },
-        log: [logEntry, ...prev.log],
-    }));
+    setGameState(prev => ({ ...prev, inventory: { ...prev.inventory, gasMask: prev.inventory.gasMask - 1 }, log: [logEntry, ...prev.log] }));
     addNotification(`-1 ${resourceTranslations.gasMask}`, 'loss');
-
-    // Passing the scout's ID to handleNextDay to be processed
     handleNextDay(characterId);
   };
 
-
   const handleUseItem = (characterId: string, item: 'food' | 'water' | 'meds') => {
       if (inventory[item] <= 0) return;
-
       let updatedCharacters = [...characters];
       const character = updatedCharacters.find(c => c.id === characterId);
       if (!character || !character.isAlive) return;
-
       let changeApplied = false;
       let logEntryText = '';
       const player = characters.find(c => c.id === 'A')?.name || 'Ben';
-
 
       if (item === 'food') {
           updatedCharacters = applyStatChange(updatedCharacters, characterId, 'hunger', 40);
           logEntryText = `${player} đưa thức ăn cho ${character.name}.`;
           changeApplied = true;
       } else if (item === 'water') {
-          updatedCharacters = applyStatChange(updatedCharacters, characterId, 'thirst', 50);
-           logEntryText = `${player} đưa nước cho ${character.name}.`;
+          const thirstReplenish = shelterState.waterFilterDurability < 30 ? 30 : 50;
+          updatedCharacters = applyStatChange(updatedCharacters, characterId, 'thirst', thirstReplenish);
+          logEntryText = `${player} đưa nước cho ${character.name}.`;
+          if (thirstReplenish < 50) logEntryText += " Nước có vị hơi lạ...";
           changeApplied = true;
       } else if (item === 'meds' && character.sickness) {
           logEntryText = `${player} đưa thuốc cho ${character.name}, và họ đã khỏi bệnh ${character.sickness.name}.`;
@@ -320,40 +309,55 @@ const App: React.FC = () => {
       if(changeApplied){
           addNotification(`-1 ${resourceTranslations[item]}`, 'loss');
           const logEntry: LogEntry = { day, text: logEntryText, type: 'status' };
-          setGameState(prev => ({
-              ...prev,
-              characters: updatedCharacters,
-              inventory: { ...prev.inventory, [item]: prev.inventory[item] - 1 },
-              log: [logEntry, ...prev.log],
-          }));
+          setGameState(prev => ({ ...prev, characters: updatedCharacters, inventory: { ...prev.inventory, [item]: prev.inventory[item] - 1 }, log: [logEntry, ...prev.log] }));
       }
   };
   
   const handleTalkToCharacter = async (characterId: string) => {
     const targetCharacter = characters.find(c => c.id === characterId);
     if (!targetCharacter || talkedToToday.includes(characterId)) return;
-
     setGameState(prev => ({ ...prev, isLoading: true }));
     const dialogue = await geminiService.generateCharacterDialogue(gameState, targetCharacter);
-    
-    // Conversations reduce stress and improve morale
     let updatedCharacters = applyStatChange(characters, characterId, 'stress', -10);
     updatedCharacters = applyStatChange(updatedCharacters, characterId, 'morale', 5);
+    updatedCharacters = applyStatChange(updatedCharacters, characterId, 'mood', 10);
+    const newLogEntry: LogEntry = { day, text: `Bạn đã dành thời gian trò chuyện với ${targetCharacter.name}. Điều đó dường như giúp họ bình tĩnh hơn.`, type: 'status' };
+    setGameState(prev => ({ ...prev, isLoading: false, currentDialogue: dialogue, characters: updatedCharacters, talkedToToday: [...prev.talkedToToday, characterId], log: [newLogEntry, ...prev.log] }));
+  };
 
-    const newLogEntry: LogEntry = {
-        day,
-        text: `Bạn đã dành thời gian trò chuyện với ${targetCharacter.name}. Điều đó dường như giúp họ bình tĩnh hơn.`,
-        type: 'status'
-    };
-
-    setGameState(prev => ({
-        ...prev,
-        isLoading: false,
-        currentDialogue: dialogue,
-        characters: updatedCharacters,
-        talkedToToday: [...prev.talkedToToday, characterId],
-        log: [newLogEntry, ...prev.log]
+  const handleUseRadio = async () => {
+    if (shelterState.radioDurability <= 0 || radioUsedToday) return;
+    setGameState(p => ({...p, isLoading: true, radioUsedToday: true}));
+    const broadcast = await geminiService.generateRadioBroadcast(gameState);
+    const newLog: LogEntry = { day, text: `[Radio] ${broadcast}`, type: 'radio' };
+    setGameState(p => ({
+      ...p,
+      isLoading: false,
+      shelterState: {...p.shelterState, radioDurability: Math.max(0, p.shelterState.radioDurability - 5)},
+      log: [newLog, ...p.log],
+      currentDialogue: `Tín hiệu từ Radio:\n${broadcast}`
     }));
+  };
+
+  const handleRepair = (item: 'radio' | 'waterFilter') => {
+    if (inventory.wrench <= 0) {
+        addNotification('Cần có cờ lê!', 'info');
+        return;
+    }
+    const prop: keyof ShelterState = item === 'radio' ? 'radioDurability' : 'waterFilterDurability';
+    if (shelterState[prop] >= 100) {
+        addNotification('Không cần sửa chữa.', 'info');
+        return;
+    }
+    const repairAmount = 30 + Math.floor(Math.random() * 20);
+    const newLog: LogEntry = { day, text: `Ben đã dành thời gian sửa chữa ${item === 'radio' ? 'radio' : 'máy lọc nước'}.`, type: 'status' };
+    
+    setGameState(p => ({
+        ...p,
+        shelterState: {...p.shelterState, [prop]: Math.min(100, p.shelterState[prop] + repairAmount)},
+        log: [newLog, ...p.log]
+    }));
+    addNotification('Sửa chữa thành công!', 'gain');
   };
 
   const handleRestart = () => {
@@ -379,6 +383,7 @@ const App: React.FC = () => {
     switch (type) {
       case 'outcome': return 'text-yellow-300 bg-yellow-900/20 p-2 rounded';
       case 'scavenge': return 'text-teal-300 bg-teal-900/20 p-2 rounded';
+      case 'radio': return 'text-cyan-300 bg-cyan-900/20 p-2 rounded italic';
       case 'choice': return 'text-green-300 italic pl-4';
       case 'status': return 'text-gray-400 text-xs pl-4';
       case 'event': return 'text-gray-200 font-semibold';
@@ -408,11 +413,15 @@ const App: React.FC = () => {
 
   return (
     <div className="bg-gray-900 min-h-screen text-green-300 font-mono p-4 lg:p-8 relative flex flex-col">
-       <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center space-y-2 w-full px-4">
+       <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center space-y-2 w-full px-4 pointer-events-none">
             {notifications.map(n => (
                 <div
                     key={n.id}
-                    className={`notification-float font-display text-2xl px-4 py-2 rounded-lg shadow-2xl border-2 w-auto max-w-md text-center ${n.type === 'gain' ? 'bg-green-500/90 border-green-300 text-white' : 'bg-red-500/90 border-red-300 text-white'}`}
+                    className={`notification-float font-display text-3xl px-6 py-2 rounded-lg shadow-2xl border-2 w-auto max-w-md text-center pointer-events-auto
+                        ${n.type === 'gain' ? 'bg-green-500/90 border-green-300 text-white' : ''}
+                        ${n.type === 'loss' ? 'bg-red-500/90 border-red-300 text-white' : ''}
+                        ${n.type === 'info' ? 'bg-blue-500/90 border-blue-300 text-white' : ''}
+                    `}
                 >
                     {n.text}
                 </div>
@@ -426,9 +435,12 @@ const App: React.FC = () => {
       {currentDialogue && <DialogueModal dialogue={currentDialogue} onClose={() => setGameState(p => ({...p, currentDialogue: null}))} />}
       {isScoutModalOpen && <ScoutSelectionModal characters={characters.filter(c => c.isAlive)} onSelect={handleStartScouting} onClose={() => setScoutModalOpen(false)} />}
 
-      <header className="mb-6">
-        <h1 className="text-3xl lg:text-4xl font-display text-green-400">HY VỌNG CUỐI CÙNG</h1>
-        <p className="text-lg text-green-300/80">Ngày {day}</p>
+      <header className="mb-6 flex justify-between items-start">
+        <div>
+            <h1 className="text-3xl lg:text-4xl font-display text-green-400">HY VỌNG CUỐI CÙNG</h1>
+            <p className="text-lg text-green-300/80">Ngày {day}</p>
+        </div>
+        <EnvironmentStatus shelterState={shelterState} />
       </header>
 
       <main className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-grow">
@@ -440,6 +452,13 @@ const App: React.FC = () => {
         </section>
 
         <aside className="space-y-6">
+          <ShelterManagement 
+            shelterState={shelterState}
+            inventory={inventory}
+            onRepair={handleRepair}
+            onUseRadio={handleUseRadio}
+            radioUsedToday={radioUsedToday}
+          />
           <div>
             <h2 className="text-xl font-bold text-green-400 font-display mb-2">KHO ĐỒ</h2>
             <div className="bg-black/30 border border-green-700/50 p-3 rounded-lg grid grid-cols-3 gap-2">
@@ -461,7 +480,7 @@ const App: React.FC = () => {
                     <button disabled={selectedLogDay >= day} onClick={() => setSelectedLogDay(p => p + 1)} className="px-2 py-0.5 text-xs font-bold text-green-300 bg-green-900/50 border border-green-600/50 rounded disabled:opacity-50">{'>'}</button>
                 </div>
             </div>
-            <div className="bg-black/30 border border-green-700/50 p-3 rounded-lg h-96 overflow-y-auto flex flex-col-reverse">
+            <div className="bg-black/30 border border-green-700/50 p-3 rounded-lg h-64 overflow-y-auto flex flex-col-reverse">
               <ul className="space-y-3 text-sm">
                 {(logsByDay[selectedLogDay] || []).map((entry, index) => (
                   <li key={index} className={getLogEntryStyle(entry.type, entry.text)}>

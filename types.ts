@@ -8,6 +8,7 @@ export interface Stats {
   thirst: number;
   stress: number;
   morale: number;
+  mood: number;
 }
 
 export interface Sickness {
@@ -21,6 +22,7 @@ export interface Sickness {
     thirst?: number;
     stress?: number;
     morale?: number;
+    mood?: number;
   };
   longTermEffects: string;
   cure: string;
@@ -65,29 +67,45 @@ export interface SicknessChange {
     duration?: number; // Optional override for sickness duration
 }
 
+export interface ShelterStateChange {
+    property: keyof ShelterState;
+    change?: number; // For numeric properties like durability
+    value?: string; // For string properties like radiationLevel
+    absolute?: boolean; // If true, sets the value directly instead of changing it
+}
 
 export interface Outcome {
     outcomeDescription: string;
     statChanges?: StatChange[];
     inventoryChanges?: InventoryChange[];
     sicknessChanges?: SicknessChange[];
+    shelterStateChanges?: ShelterStateChange[];
 }
 
 export interface LogEntry {
     day: number;
     text: string;
-    type: 'event' | 'choice' | 'outcome' | 'narration' | 'status' | 'dialogue' | 'scavenge';
+    type: 'event' | 'choice' | 'outcome' | 'narration' | 'status' | 'dialogue' | 'scavenge' | 'radio';
 }
 
 export interface Notification {
     id: number;
     text: string;
-    type: 'gain' | 'loss';
+    type: 'gain' | 'loss' | 'info';
+}
+
+export interface ShelterState {
+    integrity: number;
+    radioDurability: number;
+    waterFilterDurability: number;
+    radiationLevel: 'Bình thường' | 'Cao' | 'Nguy hiểm';
+    airQuality: 'Tốt' | 'Kém' | 'Độc hại';
 }
 
 export interface GameState {
   characters: Character[];
   inventory: Inventory;
+  shelterState: ShelterState;
   day: number;
   log: LogEntry[];
   currentEvent: GameEvent | null;
@@ -103,4 +121,5 @@ export interface GameState {
   canScavenge: boolean;
   talkedToToday: string[];
   scoutingCharacterId: string | null;
+  radioUsedToday: boolean;
 }

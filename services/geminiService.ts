@@ -9,13 +9,15 @@ const model = 'gemini-2.5-flash';
 const getGameStateSummary = (state: GameState): string => {
   const charactersSummary = state.characters
     .map(c => 
-      `${c.name} (${c.isAlive ? 'sống' : 'chết'}): Health ${c.stats.health}, Hunger ${c.stats.hunger}, Thirst ${c.stats.thirst}, Morale ${c.stats.morale}, Stress ${c.stats.stress}, ${c.sickness ? `Bị bệnh: ${c.sickness.name}` : 'Khỏe mạnh'}`
+      `${c.name} (${c.isAlive ? 'sống' : 'chết'}): Health ${c.stats.health}, Hunger ${c.stats.hunger}, Thirst ${c.stats.thirst}, Morale ${c.stats.morale}, Stress ${c.stats.stress}, Mood ${c.stats.mood}, ${c.sickness ? `Bị bệnh: ${c.sickness.name}` : 'Khỏe mạnh'}`
     )
     .join('\n');
   
   const inventorySummary = `Inventory: Food ${state.inventory.food}, Water ${state.inventory.water}, Meds ${state.inventory.meds}, Radio Parts ${state.inventory.radioPart}, Wrench ${state.inventory.wrench}, Gas Masks ${state.inventory.gasMask}.`;
 
-  return `Day ${state.day}. \nCharacters:\n${charactersSummary}\n${inventorySummary}`;
+  const shelterSummary = `Shelter Status: Integrity ${state.shelterState.integrity}%, Radio Durability ${state.shelterState.radioDurability}%, Water Filter Durability ${state.shelterState.waterFilterDurability}%, Radiation Level: ${state.shelterState.radiationLevel}, Air Quality: ${state.shelterState.airQuality}.`;
+
+  return `Day ${state.day}. \nCharacters:\n${charactersSummary}\n${inventorySummary}\n${shelterSummary}`;
 };
 
 
@@ -54,7 +56,7 @@ const outcomeSchema = {
                 type: Type.OBJECT,
                 properties: {
                     characterId: { type: Type.STRING, enum: ['A', 'B', 'C', 'D'] },
-                    stat: { type: Type.STRING, enum: ['health', 'hunger', 'thirst', 'stress', 'morale']},
+                    stat: { type: Type.STRING, enum: ['health', 'hunger', 'thirst', 'stress', 'morale', 'mood']},
                     change: { type: Type.NUMBER, description: "Positive or negative change amount." },
                 },
                 required: ['characterId', 'stat', 'change'],
@@ -85,6 +87,20 @@ const outcomeSchema = {
                 required: ['characterId', 'sicknessId'],
             }
         },
+        shelterStateChanges: {
+            type: Type.ARRAY,
+            description: "List changes to the shelter's state.",
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    property: { type: Type.STRING, enum: ['integrity', 'radioDurability', 'waterFilterDurability', 'radiationLevel', 'airQuality'] },
+                    change: { type: Type.NUMBER, description: "For numeric properties, the amount to change." },
+                    value: { type: Type.STRING, description: "For string properties, the new value." },
+                    absolute: { type: Type.BOOLEAN, description: "If true, sets the value directly instead of changing it." }
+                },
+                required: ['property'],
+            }
+        }
     },
     required: ['outcomeDescription'],
 };
@@ -105,23 +121,28 @@ export const generateIntro = async (): Promise<string> => {
 
 
 export const generateNewEvent = async (gameState: GameState): Promise<GameEvent | null> => {
+  const tradeInstructions = gameState.day > 15
+    ? "- **Sự kiện trao đổi (Trade Events):** Vì đã sau ngày 15, bức xạ đã giảm. Có thể có người lạ gõ cửa muốn trao đổi đồ. Các cuộc trao đổi có thể công bằng, có lợi, hoặc là một cái bẫy."
+    : "";
+
   const prompt = `
     Bạn là người quản trò cho game sinh tồn "Hy Vọng Cuối Cùng". 
     Bối cảnh: Một gia đình 4 người (Ben - Bố, Ann - Mẹ, Nathan - con trai, Chloe - con gái) đang mắc kẹt trong một hầm trú ẩn hạt nhân ở Việt Nam thời hậu tận thế, sau cuộc chiến giữa Mỹ và Trung Quốc.
     Chủ đề chính là sự ngột ngạt, quản lý tài nguyên và mâu thuẫn gia đình.
     **QUAN TRỌNG: Không tạo ra các sự kiện về rừng sâu, không gian mở, hoặc những thứ không thể xảy ra bên trong hoặc ngay bên ngoài một căn hầm kín.**
     Hãy tập trung vào: 
-    - Các vấn đề nội bộ: thiếu thốn tài nguyên, hỏng hóc thiết bị, bệnh tật, xung đột giữa các thành viên, các lựa chọn đạo đức khó khăn.
-    - Sự kiện môi trường: bức xạ tăng đột ngột, hầm bị rung chuyển, không khí bị nhiễm độc, có tiếng động lạ bên ngoài.
-    - Sự kiện xã hội: có người lạ gõ cửa muốn trao đổi đồ, tín hiệu radio yếu ớt.
+    - Các vấn đề nội bộ: thiếu thốn tài nguyên, bệnh tật, xung đột giữa các thành viên, các lựa chọn đạo đức khó khăn.
+    - Hỏng hóc thiết bị: Radio hoặc máy lọc nước bị trục trặc (ảnh hưởng đến durability).
+    - Sự kiện môi trường: bức xạ tăng đột ngột, hầm bị rung chuyển (ảnh hưởng integrity), không khí bị nhiễm độc.
+    ${tradeInstructions}
 
     Trạng thái game hiện tại:
     ${getGameStateSummary(gameState)}
 
     Hãy tạo một sự kiện mới bằng tiếng Việt, ngẫu nhiên và phù hợp với trạng thái hiện tại.
-    - Nếu tinh thần thấp, có thể là một cuộc cãi vã.
+    - Nếu tinh thần (morale) hoặc tâm trạng (mood) thấp, có thể là một cuộc cãi vã hoặc sự kiện tuyệt vọng.
     - Nếu đồ dùng sắp cạn, một sự kiện về việc tìm kiếm hoặc phân chia.
-    - Nếu có người ốm, một sự kiện liên quan đến bệnh tình của họ.
+    - Nếu có thiết bị hỏng, tạo sự kiện liên quan đến việc sửa chữa hoặc hậu quả của nó.
     - Giữ cho nó ngắn gọn và có tác động. Cung cấp 2-3 lựa chọn.
     - Chỉ trả về đối tượng JSON.
   `;
@@ -171,9 +192,10 @@ export const generateChoiceOutcome = async (gameState: GameState, event: GameEve
     Bây giờ, hãy mô tả kết quả của lựa chọn này bằng tiếng Việt.
     - Mô tả một cách hấp dẫn và chi tiết.
     - Kết quả phải logic dựa trên lựa chọn và trạng thái game.
-    - Xác định hậu quả: thay đổi chỉ số nhân vật (health, hunger, thirst, stress, morale), kho đồ, và tình trạng bệnh tật.
+    - Xác định hậu quả: thay đổi chỉ số nhân vật (health, hunger, thirst, stress, morale, mood), kho đồ, tình trạng bệnh tật, và trạng thái của hầm trú ẩn (integrity, durability, radiation, air quality).
     - Cân nhắc việc gây ra một loại bệnh cụ thể (IDs: ${Object.keys(SICKNESSES).join(', ')}) hoặc chữa bệnh ('none').
-    - Các chỉ số nhân vật nên thay đổi một cách thực tế. Một bữa ăn ngon có thể tăng nhẹ tinh thần nhưng giảm đáng kể cơn đói. Một sự kiện căng thẳng làm tăng stress.
+    - Các chỉ số nhân vật nên thay đổi một cách thực tế. Một bữa ăn ngon có thể tăng nhẹ tinh thần nhưng giảm đáng kể cơn đói. Một sự kiện căng thẳng làm tăng stress và giảm mood.
+    - Nếu là sự kiện trao đổi, có khả năng người chơi bị lừa (mất đồ mà không nhận lại được gì).
     - Chỉ trả về đối tượng JSON.
   `;
   try {
@@ -198,7 +220,7 @@ export const generateFamilyDialogue = async (gameState: GameState): Promise<stri
     Bạn là người viết kịch bản cho game sinh tồn "Hy Vọng Cuối Cùng".
     Bối cảnh: Gia đình 4 người (Ben, Ann, Nathan, Chloe) trong hầm trú ẩn ở Việt Nam.
     Dựa vào trạng thái game sau, hãy viết một đoạn hội thoại ngắn (1-2 câu trao đổi) giữa các thành viên gia đình.
-    - Đoạn hội thoại phải phản ánh tình trạng hiện tại của họ (đói, bệnh, căng thẳng, v.v.).
+    - Đoạn hội thoại phải phản ánh tình trạng hiện tại của họ (đói, bệnh, căng thẳng, tâm trạng tồi tệ, v.v.).
     - Giữ giọng văn tự nhiên, chân thực, và ngột ngạt. Phong cách giống game visual novel Nhật Bản.
     - Chỉ trả về một chuỗi string chứa đoạn hội thoại. Ví dụ: "Ann: 'Ben, anh có nghe thấy không? Tiếng cào cấu ngoài cửa.'".
     - Nếu không có gì đặc biệt để nói, có thể trả về một câu mô tả không khí. Ví dụ: "Cả căn hầm chìm trong im lặng, chỉ có tiếng thở đều đặn."
@@ -273,7 +295,7 @@ export const generateCharacterDialogue = async (gameState: GameState, targetChar
 
     Thông tin về ${targetCharacter.name}:
     - Mô tả: ${targetCharacter.description}
-    - Tình trạng: ${targetCharacter.isAlive ? 'sống' : 'chết'}, Health ${targetCharacter.stats.health}, Hunger ${targetCharacter.stats.hunger}, Stress ${targetCharacter.stats.stress}, Morale ${targetCharacter.stats.morale}
+    - Tình trạng: ${targetCharacter.isAlive ? 'sống' : 'chết'}, Health ${targetCharacter.stats.health}, Hunger ${targetCharacter.stats.hunger}, Stress ${targetCharacter.stats.stress}, Morale ${targetCharacter.stats.morale}, Mood ${targetCharacter.stats.mood}
 
     Hãy tạo ra một đoạn hội thoại phù hợp.
   `;
@@ -299,7 +321,7 @@ export const generateScoutOutcome = async (gameState: GameState, scout: Characte
     ${getGameStateSummary(gameState)}
 
     Thông tin về người đi trinh sát (${scout.name}):
-    Health: ${scout.stats.health}, Morale: ${scout.stats.morale}, Stress: ${scout.stats.stress}
+    Health: ${scout.stats.health}, Morale: ${scout.stats.morale}, Stress: ${scout.stats.stress}, Mood: ${scout.stats.mood}
     ${scout.sickness ? `Currently sick with ${scout.sickness.name}`: ''}
 
     Hãy mô tả kết quả của chuyến đi này.
@@ -330,5 +352,32 @@ export const generateScoutOutcome = async (gameState: GameState, scout: Characte
         outcomeDescription: `${scout.name} trở về tay không. Bên ngoài chỉ có sự im lặng chết chóc và những cơn gió bụi. Chuyến đi chỉ làm họ thêm kiệt sức.`,
         statChanges: [{ characterId: scout.id, stat: 'stress', change: 10}, { characterId: scout.id, stat: 'hunger', change: -15}]
     };
+  }
+};
+
+export const generateRadioBroadcast = async (gameState: GameState): Promise<string> => {
+    const prompt = `
+    Bạn là người quản trò cho game sinh tồn "Hy Vọng Cuối Cùng".
+    Người chơi đang sử dụng một chiếc radio cũ kỹ trong hầm trú ẩn. Độ bền của nó là ${gameState.shelterState.radioDurability}%.
+
+    Dựa trên trạng thái game, hãy tạo ra một thông điệp ngắn mà họ có thể nghe được.
+    - Có thể là nhiễu, một đoạn nhạc cũ, một thông điệp quân sự đã lỗi thời, lời cầu cứu yếu ớt từ người sống sót khác, hoặc một tín hiệu đáng ngờ có thể là cạm bẫy.
+    - Nếu radio sắp hỏng, thông điệp sẽ bị rè và khó nghe.
+    - Giữ nó bí ẩn và hấp dẫn. Chỉ trả về một chuỗi văn bản.
+
+    Trạng thái game hiện tại:
+    ${getGameStateSummary(gameState)}
+
+    Hãy tạo thông điệp radio.
+  `;
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+    });
+    return response.text.trim();
+  } catch (error) {
+    console.error("Error generating radio broadcast:", error);
+    return "... *tít* ... *rè* ... không có gì ngoài sự tĩnh lặng chết chóc ...";
   }
 };

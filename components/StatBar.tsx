@@ -1,10 +1,9 @@
-
 import React from 'react';
 import { MAX_STAT } from '../constants';
-import { HungerIcon, ThirstIcon, StressIcon, HealthIcon, MoraleIcon } from './icons';
+import { HungerIcon, ThirstIcon, StressIcon, HealthIcon, MoraleIcon, MoodIcon } from './icons';
 
 interface StatBarProps {
-  label: 'hunger' | 'thirst' | 'stress' | 'health' | 'morale';
+  label: 'hunger' | 'thirst' | 'stress' | 'health' | 'morale' | 'mood';
   value: number;
 }
 
@@ -14,6 +13,7 @@ const STAT_DESCRIPTIONS = {
     thirst: 'Cơn khát: Cần được uống nước. Khát sẽ làm giảm sức khỏe nhanh hơn đói.',
     stress: 'Căng thẳng: Mức độ lo lắng. Căng thẳng cao ảnh hưởng tiêu cực đến tinh thần.',
     morale: 'Tinh thần: Sự lạc quan và hy vọng. Tinh thần thấp dẫn đến những hành động tuyệt vọng.',
+    mood: 'Tâm trạng: Phản ánh cảm xúc và trạng thái tinh thần chung. Tâm trạng tồi tệ có thể dẫn đến hành động tiêu cực.',
 };
 
 
@@ -26,6 +26,7 @@ const StatBar: React.FC<StatBarProps> = ({ label, value }) => {
     stress: <StressIcon />,
     health: <HealthIcon />,
     morale: <MoraleIcon />,
+    mood: <MoodIcon />,
   };
   
   const getBarColor = () => {

@@ -30,6 +30,12 @@ export const MoraleIcon = () => (
     </svg>
 );
 
+export const MoodIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 inline-block mr-1" viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+    </svg>
+);
+
 export const FoodIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 inline-block" viewBox="0 0 20 20" fill="currentColor">
     <path d="M5 3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V5a2 2 0 00-2-2H5zm0 2h10v2H5V5zm0 4h10v2H5V9zm0 4h10v2H5v-2z" />
@@ -64,5 +70,29 @@ export const GasMaskIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 inline-block" viewBox="0 0 20 20" fill="currentColor">
       <path fillRule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16zM5.5 10a4.5 4.5 0 019 0H5.5zM10 12a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
       <path d="M10 12a1 1 0 01-1-1V9a1 1 0 112 0v2a1 1 0 01-1 1z" />
+    </svg>
+);
+
+export const RadiationIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM5 9a1 1 0 000 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2H8V8a1 1 0 10-2 0v1H5z" clipRule="evenodd" />
+    </svg>
+);
+
+export const AirQualityIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M10 4a.75.75 0 01.75.75v5.5a.75.75 0 01-1.5 0V4.75A.75.75 0 0110 4zm0 10a1 1 0 100-2 1 1 0 000 2zM4 10a.75.75 0 000 1.5h5.5a.75.75 0 000-1.5H4z" clipRule="evenodd" />
+    </svg>
+);
+
+export const ShelterIntegrityIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M10 2a1 1 0 00-1 1v1H5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V6a2 2 0 00-2-2h-4V3a1 1 0 00-1-1zm0 4H5v10h10V6h-5z" clipRule="evenodd" />
+    </svg>
+);
+
+export const RepairIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 inline-block ml-1" viewBox="0 0 20 20" fill="currentColor">
+      <path d="M10.325 4.317a1.75 1.75 0 00-2.65 0l-5.25 6.25a1.75 1.75 0 002.65 2.366L10 8.006l4.925 4.933a1.75 1.75 0 102.65-2.366l-5.25-6.25z" />
     </svg>
 );

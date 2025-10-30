@@ -11,7 +11,7 @@ interface CharacterCardProps {
 }
 
 const getCharacterStatus = (stats: Stats): { text: string; color: string } => {
-    // Priority: Health -> Hunger/Thirst -> Stress -> Morale
+    // Priority: Health -> Hunger/Thirst -> Mood/Stress/Morale
     if (stats.health < 30) return { text: 'Bị thương nặng', color: 'text-red-500' };
     if (stats.health < 60) return { text: 'Yếu ớt', color: 'text-yellow-400' };
 
@@ -20,6 +20,9 @@ const getCharacterStatus = (stats: Stats): { text: string; color: string } => {
 
     if (stats.hunger < 60) return { text: 'Đang đói', color: 'text-yellow-400' };
     if (stats.thirst < 60) return { text: 'Đang khát', color: 'text-yellow-400' };
+
+    if (stats.mood < 30) return { text: 'Tuyệt vọng', color: 'text-red-500' };
+    if (stats.mood < 50) return { text: 'Bất an', color: 'text-yellow-400' };
 
     if (stats.stress > 70) return { text: 'Hoảng loạn', color: 'text-red-500' };
     if (stats.stress > 40) return { text: 'Căng thẳng', color: 'text-yellow-400' };
@@ -85,6 +88,7 @@ const CharacterCard: React.FC<CharacterCardProps> = ({ character, inventory, onU
             <StatBar label="hunger" value={character.stats.hunger} />
             <StatBar label="thirst" value={character.stats.thirst} />
             <StatBar label="morale" value={character.stats.morale} />
+            <StatBar label="mood" value={character.stats.mood} />
             <StatBar label="stress" value={character.stats.stress} />
           </div>
           <div className="mt-3 pt-2 border-t border-green-700/30 flex justify-end space-x-2">
