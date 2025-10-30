@@ -8,6 +8,15 @@ interface StatBarProps {
   value: number;
 }
 
+const STAT_DESCRIPTIONS = {
+    health: 'Sức khỏe: Phản ánh thể trạng chung. Nếu về 0, nhân vật sẽ chết.',
+    hunger: 'Cơn đói: Cần được ăn uống. Đói sẽ làm giảm sức khỏe.',
+    thirst: 'Cơn khát: Cần được uống nước. Khát sẽ làm giảm sức khỏe nhanh hơn đói.',
+    stress: 'Căng thẳng: Mức độ lo lắng. Căng thẳng cao ảnh hưởng tiêu cực đến tinh thần.',
+    morale: 'Tinh thần: Sự lạc quan và hy vọng. Tinh thần thấp dẫn đến những hành động tuyệt vọng.',
+};
+
+
 const StatBar: React.FC<StatBarProps> = ({ label, value }) => {
   const percentage = (value / MAX_STAT) * 100;
   
@@ -17,14 +26,6 @@ const StatBar: React.FC<StatBarProps> = ({ label, value }) => {
     stress: <StressIcon />,
     health: <HealthIcon />,
     morale: <MoraleIcon />,
-  };
-  
-  const COLORS = {
-    hunger: 'bg-yellow-500',
-    thirst: 'bg-blue-500',
-    stress: 'bg-purple-500',
-    health: 'bg-red-500',
-    morale: 'bg-green-500',
   };
   
   const getBarColor = () => {
@@ -39,7 +40,13 @@ const StatBar: React.FC<StatBarProps> = ({ label, value }) => {
   }
 
   return (
-    <div className="flex items-center space-x-2 text-sm text-green-300 font-display">
+    <div className="group relative flex items-center space-x-2 text-sm text-green-300 font-display">
+      {/* Tooltip */}
+      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-xs px-3 py-2 bg-gray-900 border border-green-600 text-green-300 text-xs rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10">
+        <p className="font-bold capitalize">{label}: {value}/{MAX_STAT}</p>
+        <p>{STAT_DESCRIPTIONS[label]}</p>
+      </div>
+      
       <div className="w-5 h-5">{ICONS[label]}</div>
       <div className="w-full bg-gray-700/50 rounded-full h-2.5">
         <div className={`${getBarColor()} h-2.5 rounded-full`} style={{ width: `${percentage}%` }}></div>

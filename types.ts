@@ -10,13 +10,27 @@ export interface Stats {
   morale: number;
 }
 
+export interface Sickness {
+  id: string;
+  name: string;
+  description: string;
+  duration: number; // in days
+  effects: {
+    health?: number;
+    hunger?: number;
+    thirst?: number;
+    stress?: number;
+    morale?: number;
+  };
+}
+
 export interface Character {
   id: string;
   name: string;
   description: string;
   stats: Stats;
   isAlive: boolean;
-  isSick: boolean;
+  sickness: Sickness | null;
 }
 
 export interface Choice {
@@ -44,7 +58,8 @@ export interface InventoryChange {
 
 export interface SicknessChange {
     characterId: string;
-    isSick: boolean;
+    sicknessId: string | 'none'; // ID from SICKNESSES object, or 'none' to cure
+    duration?: number; // Optional override for sickness duration
 }
 
 

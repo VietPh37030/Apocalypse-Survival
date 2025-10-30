@@ -2,9 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import type { Character, GameState, Choice, GameEvent, ResourceKey, LogEntry } from './types';
 import { INITIAL_GAME_STATE, MAX_STAT, MIN_STAT, VICTORY_CONDITION } from './constants';
 import * as geminiService from './services/geminiService';
+import { SICKNESSES } from './sicknesses';
 import CharacterCard from './components/CharacterCard';
 import EventModal from './components/EventModal';
 import GameOverScreen from './components/GameOverScreen';
+import LoadingOverlay from './components/LoadingOverlay';
 import { FoodIcon, WaterIcon, MedsIcon, RadioPartIcon, WrenchIcon } from './components/icons';
 
 const LOG_ENTRIES_PER_PAGE = 10;
@@ -37,7 +39,13 @@ const App: React.FC = () => {
   ): Character[] => {
     return chars.map(c => {
       if (c.id === characterId && c.isAlive) {
-        const newValue = Math.max(MIN_STAT, Math.min(MAX_STAT, c.stats[stat] + change));
+        let newValue = c.stats[stat] + change;
+        if (stat === 'stress') {
+          // Stress should not go below MIN_STAT
+           newValue = Math.max(MIN_STAT, Math.min(MAX_STAT, newValue));
+        } else {
+           newValue = Math.max(MIN_STAT, Math.min(MAX_STAT, newValue));
+        }
         return { ...c, stats: { ...c.stats, [stat]: newValue } };
       }
       return c;
@@ -50,25 +58,38 @@ const App: React.FC = () => {
     let updatedCharacters = [...characters];
     let newLogEntries: LogEntry[] = [{ day: day + 1, text: `--- Ngày ${day + 1} ---`, type: 'narration' }];
 
-    // Daily stat decay and checks
+    // Daily stat decay and sickness checks
     updatedCharacters = updatedCharacters.map(c => {
-      if (!c.isAlive) return c;
+        if (!c.isAlive) return c;
 
-      let newStats = { ...c.stats };
-      newStats.hunger = Math.max(MIN_STAT, newStats.hunger - 10);
-      newStats.thirst = Math.max(MIN_STAT, newStats.thirst - 15);
+        let newStats = { ...c.stats };
+        let currentSickness = c.sickness ? { ...c.sickness } : null;
 
-      if (newStats.hunger <= MIN_STAT || newStats.thirst <= MIN_STAT) {
-        newStats.health = Math.max(MIN_STAT, newStats.health - 20);
-        newLogEntries.push({ day: day + 1, text: `${c.name} đang kiệt sức vì đói và khát!`, type: 'status' });
-      }
+        // Standard decay
+        newStats.hunger = Math.max(MIN_STAT, newStats.hunger - 10);
+        newStats.thirst = Math.max(MIN_STAT, newStats.thirst - 15);
+
+        if (newStats.hunger <= MIN_STAT || newStats.thirst <= MIN_STAT) {
+            newStats.health = Math.max(MIN_STAT, newStats.health - 20);
+            newLogEntries.push({ day: day + 1, text: `${c.name} đang kiệt sức vì đói và khát!`, type: 'status' });
+        }
       
-      if (c.isSick) {
-        newStats.health = Math.max(MIN_STAT, newStats.health - 10);
-        newLogEntries.push({ day: day + 1, text: `${c.name} yếu đi vì bệnh tật.`, type: 'status' });
-      }
+        // Sickness effects
+        if (currentSickness) {
+            newLogEntries.push({ day: day + 1, text: `${c.name} yếu đi vì ${currentSickness.name}.`, type: 'status' });
+            
+            Object.entries(currentSickness.effects).forEach(([stat, change]) => {
+                newStats[stat as keyof typeof newStats] = Math.max(MIN_STAT, Math.min(MAX_STAT, newStats[stat as keyof typeof newStats] + change));
+            });
 
-      return { ...c, stats: newStats };
+            currentSickness.duration -= 1;
+            if (currentSickness.duration <= 0) {
+                newLogEntries.push({ day: day + 1, text: `${c.name} đã tự hồi phục khỏi ${currentSickness.name}!`, type: 'status' });
+                currentSickness = null;
+            }
+        }
+
+        return { ...c, stats: newStats, sickness: currentSickness };
     });
     
     // Check for death
@@ -109,7 +130,7 @@ const App: React.FC = () => {
 
   const handleChoice = async (choice: Choice) => {
     if (!currentEvent) return;
-    setGameState(prev => ({ ...prev, isLoading: true }));
+    setGameState(prev => ({ ...prev, isLoading: true, currentEvent: null }));
 
     const outcome = await geminiService.generateChoiceOutcome(gameState, currentEvent, choice);
     
@@ -135,11 +156,29 @@ const App: React.FC = () => {
             newLogEntries.push({ day, text: `Chỉ số ${sc.stat} của ${charName} ${changeDesc}.`, type: 'status' });
             updatedCharacters = applyStatChange(updatedCharacters, sc.characterId, sc.stat, sc.change);
         });
+        
         outcome.sicknessChanges?.forEach(sc => {
-             const charName = updatedCharacters.find(c => c.id === sc.characterId)?.name || 'Ai đó';
-             const sicknessDesc = sc.isSick ? 'bị ốm' : 'đã hồi phục';
-             newLogEntries.push({ day, text: `${charName} ${sicknessDesc}.`, type: 'status' });
-            updatedCharacters = updatedCharacters.map(c => c.id === sc.characterId ? { ...c, isSick: sc.isSick } : c);
+            updatedCharacters = updatedCharacters.map(c => {
+                if (c.id === sc.characterId) {
+                    if (sc.sicknessId === 'none') {
+                        if (c.sickness) {
+                           newLogEntries.push({ day, text: `${c.name} đã khỏi bệnh ${c.sickness.name}.`, type: 'status' });
+                        }
+                        return { ...c, sickness: null };
+                    } else {
+                        const newSicknessTemplate = SICKNESSES[sc.sicknessId];
+                        if (newSicknessTemplate) {
+                            const newSickness = {
+                                ...newSicknessTemplate,
+                                duration: sc.duration || newSicknessTemplate.duration,
+                            };
+                            newLogEntries.push({ day, text: `${c.name} đã mắc phải: ${newSickness.name}.`, type: 'status' });
+                            return { ...c, sickness: newSickness };
+                        }
+                    }
+                }
+                return c;
+            });
         });
 
         let updatedInventory = { ...tempState.inventory };
@@ -183,20 +222,24 @@ const App: React.FC = () => {
       if (!character || !character.isAlive) return;
 
       let changeApplied = false;
+      let logEntryText = '';
+
       if (item === 'food') {
           updatedCharacters = applyStatChange(updatedCharacters, characterId, 'hunger', 40);
+          logEntryText = `${character.name} đã dùng thức ăn.`;
           changeApplied = true;
       } else if (item === 'water') {
           updatedCharacters = applyStatChange(updatedCharacters, characterId, 'thirst', 50);
+           logEntryText = `${character.name} đã dùng nước.`;
           changeApplied = true;
-      } else if (item === 'meds' && character.isSick) {
-          updatedCharacters = updatedCharacters.map(c => c.id === characterId ? { ...c, isSick: false, stats: {...c.stats, health: Math.min(MAX_STAT, c.stats.health + 20)} } : c);
+      } else if (item === 'meds' && character.sickness) {
+          logEntryText = `${character.name} đã dùng thuốc và khỏi bệnh ${character.sickness.name}.`;
+          updatedCharacters = updatedCharacters.map(c => c.id === characterId ? { ...c, sickness: null, stats: {...c.stats, health: Math.min(MAX_STAT, c.stats.health + 20)} } : c);
           changeApplied = true;
       }
       
       if(changeApplied){
-          const itemTranslations: Record<typeof item, string> = { food: 'thức ăn', water: 'nước', meds: 'thuốc' };
-          const logEntry: LogEntry = { day, text: `${character.name} đã dùng ${itemTranslations[item]}.`, type: 'status' };
+          const logEntry: LogEntry = { day, text: logEntryText, type: 'status' };
           setGameState(prev => ({
               ...prev,
               characters: updatedCharacters,
@@ -209,6 +252,7 @@ const App: React.FC = () => {
   
   const handleRestart = () => {
       setGameState(JSON.parse(JSON.stringify(INITIAL_GAME_STATE)));
+      startGame();
   }
   
   const ICONS: Record<ResourceKey, React.ReactNode> = {
@@ -255,6 +299,7 @@ const App: React.FC = () => {
     <div className="bg-gray-900 min-h-screen text-green-300 font-mono p-4 lg:p-8 relative flex flex-col">
       <div className="crt-effect-soft"></div>
       
+      {isLoading && !currentEvent && <LoadingOverlay />}
       {gameOver.isGameOver && <GameOverScreen message={gameOver.message} isWin={gameOver.isWin} onRestart={handleRestart} />}
       {currentEvent && <EventModal event={currentEvent} onChoice={handleChoice} isLoading={isLoading} inventory={inventory} />}
 

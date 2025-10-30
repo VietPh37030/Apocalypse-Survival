@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { GameState, GameEvent, Outcome, Choice } from '../types';
+import { SICKNESSES } from '../sicknesses';
 
 // Per instructions, API key is handled by the environment.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -8,7 +9,7 @@ const model = 'gemini-2.5-flash';
 const getGameStateSummary = (state: GameState): string => {
   const charactersSummary = state.characters
     .map(c => 
-      `${c.name} (${c.isAlive ? 'sống' : 'chết'}): Health ${c.stats.health}, Hunger ${c.stats.hunger}, Thirst ${c.stats.thirst}, Morale ${c.stats.morale}, Stress ${c.stats.stress}, ${c.isSick ? 'Bị ốm' : 'Khỏe mạnh'}`
+      `${c.name} (${c.isAlive ? 'sống' : 'chết'}): Health ${c.stats.health}, Hunger ${c.stats.hunger}, Thirst ${c.stats.thirst}, Morale ${c.stats.morale}, Stress ${c.stats.stress}, ${c.sickness ? `Bị bệnh: ${c.sickness.name}` : 'Khỏe mạnh'}`
     )
     .join('\n');
   
@@ -78,9 +79,10 @@ const outcomeSchema = {
                 type: Type.OBJECT,
                 properties: {
                     characterId: { type: Type.STRING, enum: ['A', 'B', 'C', 'D'] },
-                    isSick: { type: Type.BOOLEAN },
+                    sicknessId: { type: Type.STRING, enum: [...Object.keys(SICKNESSES), 'none'], description: "ID of the sickness to apply, or 'none' to cure." },
+                    duration: { type: Type.NUMBER, description: "Optional. Set the duration of the new sickness in days." }
                 },
-                required: ['characterId', 'isSick'],
+                required: ['characterId', 'sicknessId'],
             }
         },
     },
@@ -168,6 +170,7 @@ export const generateChoiceOutcome = async (gameState: GameState, event: GameEve
     - Mô tả một cách hấp dẫn và chi tiết.
     - Kết quả phải logic dựa trên lựa chọn và trạng thái game.
     - Xác định hậu quả: thay đổi chỉ số nhân vật (health, hunger, thirst, stress, morale), kho đồ, và tình trạng bệnh tật.
+    - Cân nhắc việc gây ra một loại bệnh cụ thể (IDs: ${Object.keys(SICKNESSES).join(', ')}) hoặc chữa bệnh ('none').
     - Các chỉ số nhân vật nên thay đổi một cách thực tế. Một bữa ăn ngon có thể tăng nhẹ tinh thần nhưng giảm đáng kể cơn đói. Một sự kiện căng thẳng làm tăng stress.
     - Chỉ trả về đối tượng JSON.
   `;

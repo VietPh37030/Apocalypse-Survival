@@ -10,7 +10,7 @@ export const INITIAL_CHARACTERS: Character[] = [
     description: 'A skilled engineer, the family\'s pillar of strength.',
     stats: { health: 100, hunger: 80, thirst: 80, stress: 20, morale: 70 },
     isAlive: true,
-    isSick: false,
+    sickness: null,
   },
   {
     id: 'B',
@@ -18,7 +18,7 @@ export const INITIAL_CHARACTERS: Character[] = [
     description: 'A nurse, the heart of the family, always caring for others.',
     stats: { health: 100, hunger: 80, thirst: 80, stress: 30, morale: 80 },
     isAlive: true,
-    isSick: false,
+    sickness: null,
   },
   {
     id: 'C',
@@ -26,7 +26,7 @@ export const INITIAL_CHARACTERS: Character[] = [
     description: 'A curious teenager, eager to explore the world outside.',
     stats: { health: 100, hunger: 80, thirst: 80, stress: 10, morale: 60 },
     isAlive: true,
-    isSick: false,
+    sickness: null,
   },
   {
     id: 'D',
@@ -34,7 +34,7 @@ export const INITIAL_CHARACTERS: Character[] = [
     description: 'A young girl, easily affected by the oppressive atmosphere.',
     stats: { health: 90, hunger: 70, thirst: 70, stress: 40, morale: 75 },
     isAlive: true,
-    isSick: false,
+    sickness: null,
   },
 ];
 
