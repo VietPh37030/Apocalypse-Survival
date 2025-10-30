@@ -6,6 +6,7 @@ interface CharacterCardProps {
   character: Character;
   inventory: Inventory;
   onUseItem: (characterId: string, item: 'food' | 'water' | 'meds') => void;
+  onTalk: (characterId: string) => void;
 }
 
 const getCharacterStatus = (stats: Stats): { text: string; color: string } => {
@@ -28,7 +29,7 @@ const getCharacterStatus = (stats: Stats): { text: string; color: string } => {
     return { text: 'Bình thường', color: 'text-green-400' };
 };
 
-const ItemButton: React.FC<{
+const ActionButton: React.FC<{
   onClick: () => void;
   disabled: boolean;
   children: React.ReactNode;
@@ -42,10 +43,15 @@ const ItemButton: React.FC<{
   </button>
 );
 
-const CharacterCard: React.FC<CharacterCardProps> = ({ character, inventory, onUseItem }) => {
+const CharacterCard: React.FC<CharacterCardProps> = ({ character, inventory, onUseItem, onTalk }) => {
   const isDead = !character.isAlive;
+  const isPlayer = character.id === 'A';
   const cardClasses = `bg-black/30 border border-green-700/50 p-3 rounded-lg shadow-lg transition-all duration-300 ${isDead ? 'grayscale opacity-50' : ''}`;
   const status = getCharacterStatus(character.stats);
+  
+  const sicknessTitle = character.sickness 
+    ? `${character.sickness.description}\n\nTác động lâu dài: ${character.sickness.longTermEffects}\n\nCách chữa: ${character.sickness.cure}` 
+    : '';
 
   return (
     <div className={cardClasses}>
@@ -60,8 +66,8 @@ const CharacterCard: React.FC<CharacterCardProps> = ({ character, inventory, onU
           )}
           <p className="text-sm text-green-400/80 mt-1">{character.description}</p>
           {character.sickness && (
-            <p className="text-sm font-bold text-yellow-400 mt-1" title={character.sickness.description}>
-              Bệnh: {character.sickness.name} ({character.sickness.duration} ngày)
+            <p className="text-sm font-bold text-yellow-400 mt-1 cursor-help" title={sicknessTitle}>
+              Bệnh: {character.sickness.name} ({character.sickness.duration} ngày) ⓘ
             </p>
           )}
           {isDead && <p className="text-lg font-bold text-red-500 transform -rotate-12 mt-2">ĐÃ CHẾT</p>}
@@ -77,15 +83,20 @@ const CharacterCard: React.FC<CharacterCardProps> = ({ character, inventory, onU
             <StatBar label="stress" value={character.stats.stress} />
           </div>
           <div className="mt-3 pt-2 border-t border-green-700/30 flex justify-end space-x-2">
-            <ItemButton onClick={() => onUseItem(character.id, 'food')} disabled={inventory.food <= 0}>
+            {!isPlayer && (
+              <ActionButton onClick={() => onTalk(character.id)} disabled={false}>
+                Trò chuyện
+              </ActionButton>
+            )}
+            <ActionButton onClick={() => onUseItem(character.id, 'food')} disabled={inventory.food <= 0}>
               Ăn
-            </ItemButton>
-            <ItemButton onClick={() => onUseItem(character.id, 'water')} disabled={inventory.water <= 0}>
+            </ActionButton>
+            <ActionButton onClick={() => onUseItem(character.id, 'water')} disabled={inventory.water <= 0}>
               Uống
-            </ItemButton>
-            <ItemButton onClick={() => onUseItem(character.id, 'meds')} disabled={inventory.meds <= 0 || !character.sickness}>
+            </ActionButton>
+            <ActionButton onClick={() => onUseItem(character.id, 'meds')} disabled={inventory.meds <= 0 || !character.sickness}>
               Dùng thuốc
-            </ItemButton>
+            </ActionButton>
           </div>
         </>
       )}

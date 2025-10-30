@@ -50,7 +50,6 @@ export const INITIAL_GAME_STATE: GameState = {
   },
   day: 1,
   log: [{ day: 1, text: 'Trò chơi bắt đầu. Cả gia đình đang ở trong một căn hầm trú ẩn an toàn, ít nhất là cho bây giờ.', type: 'narration' }],
-  logPage: 1,
   currentEvent: null,
   gameOver: {
     isGameOver: false,
@@ -60,6 +59,8 @@ export const INITIAL_GAME_STATE: GameState = {
   isLoading: false,
   gameStarted: false,
   intro: '',
+  currentDialogue: null,
+  canScavenge: true,
 };
 
 export const VICTORY_CONDITION = {

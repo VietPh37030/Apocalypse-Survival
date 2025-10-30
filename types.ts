@@ -22,6 +22,8 @@ export interface Sickness {
     stress?: number;
     morale?: number;
   };
+  longTermEffects: string;
+  cure: string;
 }
 
 export interface Character {
@@ -73,16 +75,20 @@ export interface Outcome {
 export interface LogEntry {
     day: number;
     text: string;
-    type: 'event' | 'choice' | 'outcome' | 'narration' | 'status';
+    type: 'event' | 'choice' | 'outcome' | 'narration' | 'status' | 'dialogue' | 'scavenge';
 }
 
+export interface Notification {
+    id: number;
+    text: string;
+    type: 'gain' | 'loss';
+}
 
 export interface GameState {
   characters: Character[];
   inventory: Inventory;
   day: number;
   log: LogEntry[];
-  logPage: number;
   currentEvent: GameEvent | null;
   gameOver: {
     isGameOver: boolean;
@@ -92,4 +98,6 @@ export interface GameState {
   isLoading: boolean;
   gameStarted: boolean;
   intro: string;
+  currentDialogue: string | null;
+  canScavenge: boolean;
 }

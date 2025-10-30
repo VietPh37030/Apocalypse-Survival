@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import type { Character, GameState, Choice, GameEvent, ResourceKey, LogEntry } from './types';
+import React, { useState, useMemo, useEffect } from 'react';
+import type { Character, GameState, Choice, GameEvent, ResourceKey, LogEntry, Notification } from './types';
 import { INITIAL_GAME_STATE, MAX_STAT, MIN_STAT, VICTORY_CONDITION } from './constants';
 import * as geminiService from './services/geminiService';
 import { SICKNESSES } from './sicknesses';
@@ -7,14 +7,23 @@ import CharacterCard from './components/CharacterCard';
 import EventModal from './components/EventModal';
 import GameOverScreen from './components/GameOverScreen';
 import LoadingOverlay from './components/LoadingOverlay';
+import DialogueModal from './components/DialogueModal';
 import { FoodIcon, WaterIcon, MedsIcon, RadioPartIcon, WrenchIcon } from './components/icons';
-
-const LOG_ENTRIES_PER_PAGE = 10;
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(INITIAL_GAME_STATE);
-  const { characters, inventory, day, log, logPage, currentEvent, gameOver, isLoading, gameStarted, intro } = gameState;
+  const { characters, inventory, day, log, currentEvent, gameOver, isLoading, gameStarted, currentDialogue, canScavenge } = gameState;
+  const [selectedLogDay, setSelectedLogDay] = useState(1);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
+  const addNotification = (text: string, type: 'gain' | 'loss') => {
+    const newNotification: Notification = { id: Date.now(), text, type };
+    setNotifications(prev => [...prev, newNotification]);
+    setTimeout(() => {
+        setNotifications(prev => prev.filter(n => n.id !== newNotification.id));
+    }, 2000); // Notification lasts for 2 seconds
+  };
+  
   const startGame = async () => {
     setGameState(prev => ({...prev, isLoading: true}));
     const introText = await geminiService.generateIntro();
@@ -26,9 +35,9 @@ const App: React.FC = () => {
         ...INITIAL_GAME_STATE,
         gameStarted: true, 
         isLoading: false, 
-        intro: introText,
         log: initialLog,
     }));
+    setSelectedLogDay(1);
   }
 
   const applyStatChange = (
@@ -40,23 +49,20 @@ const App: React.FC = () => {
     return chars.map(c => {
       if (c.id === characterId && c.isAlive) {
         let newValue = c.stats[stat] + change;
-        if (stat === 'stress') {
-          // Stress should not go below MIN_STAT
-           newValue = Math.max(MIN_STAT, Math.min(MAX_STAT, newValue));
-        } else {
-           newValue = Math.max(MIN_STAT, Math.min(MAX_STAT, newValue));
-        }
+        newValue = Math.max(MIN_STAT, Math.min(MAX_STAT, newValue));
         return { ...c, stats: { ...c.stats, [stat]: newValue } };
       }
       return c;
     });
   };
 
-  const handleNextDay = useCallback(async () => {
-    setGameState(prev => ({ ...prev, isLoading: true, day: prev.day + 1, logPage: 1 }));
+  const handleNextDay = async () => {
+    const nextDayNumber = day + 1;
+    setGameState(prev => ({ ...prev, isLoading: true, currentEvent: null, day: nextDayNumber, canScavenge: true }));
+    setSelectedLogDay(nextDayNumber);
 
     let updatedCharacters = [...characters];
-    let newLogEntries: LogEntry[] = [{ day: day + 1, text: `--- Ngày ${day + 1} ---`, type: 'narration' }];
+    let newLogEntries: LogEntry[] = [{ day: nextDayNumber, text: `--- Ngày ${nextDayNumber} ---`, type: 'narration' }];
 
     // Daily stat decay and sickness checks
     updatedCharacters = updatedCharacters.map(c => {
@@ -71,20 +77,17 @@ const App: React.FC = () => {
 
         if (newStats.hunger <= MIN_STAT || newStats.thirst <= MIN_STAT) {
             newStats.health = Math.max(MIN_STAT, newStats.health - 20);
-            newLogEntries.push({ day: day + 1, text: `${c.name} đang kiệt sức vì đói và khát!`, type: 'status' });
         }
       
         // Sickness effects
         if (currentSickness) {
-            newLogEntries.push({ day: day + 1, text: `${c.name} yếu đi vì ${currentSickness.name}.`, type: 'status' });
-            
             Object.entries(currentSickness.effects).forEach(([stat, change]) => {
                 newStats[stat as keyof typeof newStats] = Math.max(MIN_STAT, Math.min(MAX_STAT, newStats[stat as keyof typeof newStats] + change));
             });
 
             currentSickness.duration -= 1;
             if (currentSickness.duration <= 0) {
-                newLogEntries.push({ day: day + 1, text: `${c.name} đã tự hồi phục khỏi ${currentSickness.name}!`, type: 'status' });
+                newLogEntries.push({ day: nextDayNumber, text: `${c.name} đã tự hồi phục khỏi ${currentSickness.name}!`, type: 'status' });
                 currentSickness = null;
             }
         }
@@ -101,10 +104,15 @@ const App: React.FC = () => {
       return c;
     });
 
+    const stateForAI = { ...gameState, characters: updatedCharacters, day: nextDayNumber, log: [...newLogEntries, ...log] };
+
+    const dialogue = await geminiService.generateFamilyDialogue(stateForAI);
+    
     setGameState(prev => ({
       ...prev,
       characters: updatedCharacters,
-      log: [...newLogEntries, ...prev.log]
+      log: [...newLogEntries, ...prev.log],
+      currentDialogue: dialogue,
     }));
 
     // Check for game over (all dead)
@@ -118,102 +126,116 @@ const App: React.FC = () => {
     }
     
     // Fetch new event
-    const event = await geminiService.generateNewEvent({ ...gameState, characters: updatedCharacters, day: day + 1 });
+    const event = await geminiService.generateNewEvent(stateForAI);
     if (event) {
-      const eventLogEntry: LogEntry = { day: day + 1, text: event.eventDescription, type: 'event' };
+      const eventLogEntry: LogEntry = { day: nextDayNumber, text: event.eventDescription, type: 'event' };
       setGameState(prev => ({ ...prev, currentEvent: event, isLoading: false, log: [eventLogEntry, ...prev.log] }));
     } else {
-      const quietDayEntry: LogEntry = { day: day + 1, text: "Một ngày yên tĩnh trôi qua.", type: 'narration' };
+      const quietDayEntry: LogEntry = { day: nextDayNumber, text: "Một ngày yên tĩnh trôi qua.", type: 'narration' };
       setGameState(prev => ({ ...prev, isLoading: false, log: [quietDayEntry, ...prev.log] }));
     }
-  }, [day, characters, gameState]);
+  };
+
+  const processOutcome = (outcome: any, currentState: GameState) => {
+    let updatedCharacters = [...currentState.characters];
+    let updatedInventory = { ...currentState.inventory };
+    const outcomeLogEntries: LogEntry[] = [];
+  
+    outcome.statChanges?.forEach((sc: any) => {
+      updatedCharacters = applyStatChange(updatedCharacters, sc.characterId, sc.stat, sc.change);
+    });
+  
+    outcome.sicknessChanges?.forEach((sc: any) => {
+      updatedCharacters = updatedCharacters.map(c => {
+        if (c.id === sc.characterId) {
+          if (sc.sicknessId === 'none') {
+            if (c.sickness) {
+              outcomeLogEntries.push({ day: currentState.day, text: `${c.name} đã khỏi bệnh ${c.sickness.name}.`, type: 'status' });
+            }
+            return { ...c, sickness: null };
+          } else {
+            const newSicknessTemplate = SICKNESSES[sc.sicknessId];
+            if (newSicknessTemplate) {
+              const newSickness = { ...newSicknessTemplate, duration: sc.duration || newSicknessTemplate.duration };
+              outcomeLogEntries.push({ day: currentState.day, text: `${c.name} đã mắc phải: ${newSickness.name}.`, type: 'status' });
+              return { ...c, sickness: newSickness };
+            }
+          }
+        }
+        return c;
+      });
+    });
+  
+    outcome.inventoryChanges?.forEach((ic: any) => {
+      if (ic.change > 0) {
+        addNotification(`+${ic.change} ${resourceTranslations[ic.item]}`, 'gain');
+      } else {
+        addNotification(`${ic.change} ${resourceTranslations[ic.item]}`, 'loss');
+      }
+      updatedInventory[ic.item] = Math.max(0, updatedInventory[ic.item] + ic.change);
+    });
+  
+    return { updatedCharacters, updatedInventory, outcomeLogEntries };
+  };
 
   const handleChoice = async (choice: Choice) => {
     if (!currentEvent) return;
     setGameState(prev => ({ ...prev, isLoading: true, currentEvent: null }));
 
-    const outcome = await geminiService.generateChoiceOutcome(gameState, currentEvent, choice);
-    
     let tempState = { ...gameState };
-    const newLogEntries: LogEntry[] = [];
-
-    newLogEntries.push({ day, text: `Lựa chọn: ${choice.text}`, type: 'choice' });
+    const newLogEntries: LogEntry[] = [{ day, text: `Lựa chọn: ${choice.text}`, type: 'choice' }];
 
     if (choice.requiredItem && tempState.inventory[choice.requiredItem] > 0) {
-        tempState.inventory = {
-            ...tempState.inventory,
-            [choice.requiredItem]: tempState.inventory[choice.requiredItem] - 1
-        };
+        addNotification(`-1 ${resourceTranslations[choice.requiredItem]}`, 'loss');
+        tempState.inventory = { ...tempState.inventory, [choice.requiredItem]: tempState.inventory[choice.requiredItem] - 1 };
     }
+
+    const outcome = await geminiService.generateChoiceOutcome(tempState, currentEvent, choice);
 
     if (outcome) {
         newLogEntries.push({ day, text: outcome.outcomeDescription, type: 'outcome' });
-        
-        let updatedCharacters = [...tempState.characters];
-        outcome.statChanges?.forEach(sc => {
-            const charName = updatedCharacters.find(c => c.id === sc.characterId)?.name || 'Ai đó';
-            const changeDesc = sc.change > 0 ? `tăng ${sc.change}` : `giảm ${Math.abs(sc.change)}`;
-            newLogEntries.push({ day, text: `Chỉ số ${sc.stat} của ${charName} ${changeDesc}.`, type: 'status' });
-            updatedCharacters = applyStatChange(updatedCharacters, sc.characterId, sc.stat, sc.change);
-        });
-        
-        outcome.sicknessChanges?.forEach(sc => {
-            updatedCharacters = updatedCharacters.map(c => {
-                if (c.id === sc.characterId) {
-                    if (sc.sicknessId === 'none') {
-                        if (c.sickness) {
-                           newLogEntries.push({ day, text: `${c.name} đã khỏi bệnh ${c.sickness.name}.`, type: 'status' });
-                        }
-                        return { ...c, sickness: null };
-                    } else {
-                        const newSicknessTemplate = SICKNESSES[sc.sicknessId];
-                        if (newSicknessTemplate) {
-                            const newSickness = {
-                                ...newSicknessTemplate,
-                                duration: sc.duration || newSicknessTemplate.duration,
-                            };
-                            newLogEntries.push({ day, text: `${c.name} đã mắc phải: ${newSickness.name}.`, type: 'status' });
-                            return { ...c, sickness: newSickness };
-                        }
-                    }
-                }
-                return c;
-            });
-        });
-
-        let updatedInventory = { ...tempState.inventory };
-        outcome.inventoryChanges?.forEach(ic => {
-             const changeDesc = ic.change > 0 ? `nhận được ${ic.change}` : `mất ${Math.abs(ic.change)}`;
-             newLogEntries.push({ day, text: `Kho đồ ${changeDesc} ${ic.item}.`, type: 'status' });
-            updatedInventory[ic.item] = Math.max(0, updatedInventory[ic.item] + ic.change);
-        });
+        const { updatedCharacters, updatedInventory, outcomeLogEntries } = processOutcome(outcome, tempState);
         
         setGameState(prev => ({
             ...prev,
             characters: updatedCharacters,
             inventory: updatedInventory,
-            log: [...newLogEntries, ...prev.log],
-            logPage: 1,
+            log: [...outcomeLogEntries, ...newLogEntries, ...prev.log],
         }));
         
         if(updatedInventory.radioPart >= VICTORY_CONDITION.radioParts && updatedInventory.wrench >= VICTORY_CONDITION.wrench){
              setGameState(prev => ({
-                ...prev,
-                isLoading: false,
-                currentEvent: null,
+                ...prev, isLoading: false, currentEvent: null,
                 gameOver: { isGameOver: true, isWin: true, message: 'Bạn đã sửa được radio và gọi cứu trợ thành công! Bạn đã sống sót.' }
             }));
             return;
         }
 
     } else {
-        const errorLog: LogEntry = { day, text: "Có lỗi xảy ra, sự kiện không có kết quả.", type: 'status' };
-         setGameState(prev => ({ ...prev, log: [errorLog, ...prev.log] }));
+        newLogEntries.push({ day, text: "Có lỗi xảy ra, sự kiện không có kết quả.", type: 'status' });
     }
-
-    setGameState(prev => ({ ...prev, isLoading: false, currentEvent: null }));
+    
+    setGameState(prev => ({ ...prev, log: [...newLogEntries, ...prev.log], isLoading: false, currentEvent: null }));
   };
   
+  const handleScavenge = async () => {
+    setGameState(prev => ({ ...prev, isLoading: true, canScavenge: false }));
+    const outcome = await geminiService.generateScavengeOutcome(gameState);
+
+    if (outcome) {
+        const scavengeLog: LogEntry = { day, text: outcome.outcomeDescription, type: 'scavenge' };
+        const { updatedCharacters, updatedInventory, outcomeLogEntries } = processOutcome(outcome, gameState);
+
+        setGameState(prev => ({
+            ...prev,
+            characters: updatedCharacters,
+            inventory: updatedInventory,
+            log: [...outcomeLogEntries, scavengeLog, ...prev.log]
+        }));
+    }
+    setGameState(prev => ({ ...prev, isLoading: false }));
+  };
+
   const handleUseItem = (characterId: string, item: 'food' | 'water' | 'meds') => {
       if (inventory[item] <= 0) return;
 
@@ -226,11 +248,11 @@ const App: React.FC = () => {
 
       if (item === 'food') {
           updatedCharacters = applyStatChange(updatedCharacters, characterId, 'hunger', 40);
-          logEntryText = `${character.name} đã dùng thức ăn.`;
+          logEntryText = `${character.name} đã ăn.`;
           changeApplied = true;
       } else if (item === 'water') {
           updatedCharacters = applyStatChange(updatedCharacters, characterId, 'thirst', 50);
-           logEntryText = `${character.name} đã dùng nước.`;
+           logEntryText = `${character.name} đã uống.`;
           changeApplied = true;
       } else if (item === 'meds' && character.sickness) {
           logEntryText = `${character.name} đã dùng thuốc và khỏi bệnh ${character.sickness.name}.`;
@@ -239,17 +261,26 @@ const App: React.FC = () => {
       }
       
       if(changeApplied){
+          addNotification(`-1 ${resourceTranslations[item]}`, 'loss');
           const logEntry: LogEntry = { day, text: logEntryText, type: 'status' };
           setGameState(prev => ({
               ...prev,
               characters: updatedCharacters,
               inventory: { ...prev.inventory, [item]: prev.inventory[item] - 1 },
               log: [logEntry, ...prev.log],
-              logPage: 1,
           }));
       }
   };
   
+  const handleTalkToCharacter = async (characterId: string) => {
+    const targetCharacter = characters.find(c => c.id === characterId);
+    if (!targetCharacter) return;
+
+    setGameState(prev => ({ ...prev, isLoading: true }));
+    const dialogue = await geminiService.generateCharacterDialogue(gameState, targetCharacter);
+    setGameState(prev => ({ ...prev, isLoading: false, currentDialogue: dialogue }));
+  };
+
   const handleRestart = () => {
       setGameState(JSON.parse(JSON.stringify(INITIAL_GAME_STATE)));
       startGame();
@@ -262,15 +293,20 @@ const App: React.FC = () => {
       food: 'Thực phẩm', water: 'Nước', meds: 'Thuốc', radioPart: 'Linh kiện', wrench: 'Cờ lê',
   };
   
-  const totalLogPages = Math.ceil(log.length / LOG_ENTRIES_PER_PAGE);
-  const paginatedLog = log.slice((logPage - 1) * LOG_ENTRIES_PER_PAGE, logPage * LOG_ENTRIES_PER_PAGE);
+  const logsByDay = useMemo(() => {
+    return log.reduce((acc, entry) => {
+        (acc[entry.day] = acc[entry.day] || []).push(entry);
+        return acc;
+    }, {} as Record<number, LogEntry[]>);
+  }, [log]);
 
   const getLogEntryStyle = (type: LogEntry['type'], text: string) => {
     switch (type) {
       case 'outcome': return 'text-yellow-300';
+      case 'scavenge': return 'text-teal-300';
       case 'choice': return 'text-green-300 italic pl-4';
       case 'status': return 'text-gray-400 text-xs pl-4';
-      case 'event': return 'text-gray-200';
+      case 'event': return 'text-gray-200 font-semibold';
       case 'narration':
         if (text.startsWith('---')) return 'text-center font-display text-green-500 py-2 tracking-widest';
         return 'text-gray-200';
@@ -299,9 +335,10 @@ const App: React.FC = () => {
     <div className="bg-gray-900 min-h-screen text-green-300 font-mono p-4 lg:p-8 relative flex flex-col">
       <div className="crt-effect-soft"></div>
       
-      {isLoading && !currentEvent && <LoadingOverlay />}
+      {isLoading && <LoadingOverlay />}
       {gameOver.isGameOver && <GameOverScreen message={gameOver.message} isWin={gameOver.isWin} onRestart={handleRestart} />}
       {currentEvent && <EventModal event={currentEvent} onChoice={handleChoice} isLoading={isLoading} inventory={inventory} />}
+      {currentDialogue && <DialogueModal dialogue={currentDialogue} onClose={() => setGameState(p => ({...p, currentDialogue: null}))} />}
 
       <header className="mb-6">
         <h1 className="text-3xl lg:text-4xl font-display text-green-400">HY VỌNG CUỐI CÙNG</h1>
@@ -312,13 +349,23 @@ const App: React.FC = () => {
         <section className="lg:col-span-2 space-y-4">
           <h2 className="text-xl font-bold text-green-400 font-display">GIA ĐÌNH</h2>
           {characters.map(char => (
-            <CharacterCard key={char.id} character={char} inventory={inventory} onUseItem={handleUseItem} />
+            <CharacterCard key={char.id} character={char} inventory={inventory} onUseItem={handleUseItem} onTalk={handleTalkToCharacter} />
           ))}
         </section>
 
         <aside className="space-y-6">
-          <div>
+          <div className="relative">
             <h2 className="text-xl font-bold text-green-400 font-display mb-2">KHO ĐỒ</h2>
+             <div className="absolute top-8 right-0 z-10 flex flex-col items-end space-y-1">
+                {notifications.map(n => (
+                    <div
+                        key={n.id}
+                        className={`notification-float font-display text-lg px-3 py-1 rounded-md shadow-lg ${n.type === 'gain' ? 'bg-green-500/80 text-white' : 'bg-red-500/80 text-white'}`}
+                    >
+                        {n.text}
+                    </div>
+                ))}
+            </div>
             <div className="bg-black/30 border border-green-700/50 p-3 rounded-lg grid grid-cols-3 gap-2">
               {Object.entries(inventory).map(([key, value]) => (
                 <div key={key} className="flex flex-col items-center p-2 bg-gray-800/50 rounded">
@@ -330,28 +377,35 @@ const App: React.FC = () => {
             </div>
           </div>
           <div>
-            <h2 className="text-xl font-bold text-green-400 font-display mb-2">NHẬT KÝ</h2>
+            <div className="flex justify-between items-center mb-2">
+                <h2 className="text-xl font-bold text-green-400 font-display">NHẬT KÝ</h2>
+                <div className="flex items-center space-x-2">
+                    <button disabled={selectedLogDay <= 1} onClick={() => setSelectedLogDay(p => p - 1)} className="px-2 py-0.5 text-xs font-bold text-green-300 bg-green-900/50 border border-green-600/50 rounded disabled:opacity-50">{'<'}</button>
+                    <span className="text-sm font-display">Ngày {selectedLogDay}</span>
+                    <button disabled={selectedLogDay >= day} onClick={() => setSelectedLogDay(p => p + 1)} className="px-2 py-0.5 text-xs font-bold text-green-300 bg-green-900/50 border border-green-600/50 rounded disabled:opacity-50">{'>'}</button>
+                </div>
+            </div>
             <div className="bg-black/30 border border-green-700/50 p-3 rounded-lg h-96 overflow-y-auto flex flex-col-reverse">
-              <ul className="space-y-2 text-sm">
-                {paginatedLog.map((entry, index) => (
+              <ul className="space-y-3 text-sm">
+                {(logsByDay[selectedLogDay] || []).map((entry, index) => (
                   <li key={index} className={getLogEntryStyle(entry.type, entry.text)}>
                     {entry.text}
                   </li>
-                ))}
+                )).reverse()}
               </ul>
             </div>
-            {totalLogPages > 1 && (
-              <div className="flex justify-center items-center mt-2 space-x-2">
-                <button disabled={logPage <= 1} onClick={() => setGameState(p => ({...p, logPage: p.logPage - 1}))} className="px-3 py-1 text-xs font-bold text-green-300 bg-green-900/50 border border-green-600/50 rounded disabled:opacity-50">Trước</button>
-                <span className="text-xs font-display">Trang {logPage} / {totalLogPages}</span>
-                <button disabled={logPage >= totalLogPages} onClick={() => setGameState(p => ({...p, logPage: p.logPage + 1}))} className="px-3 py-1 text-xs font-bold text-green-300 bg-green-900/50 border border-green-600/50 rounded disabled:opacity-50">Sau</button>
-              </div>
-            )}
           </div>
         </aside>
       </main>
 
-      <footer className="mt-6 py-4 flex justify-center">
+      <footer className="mt-6 py-4 flex justify-center items-center space-x-4">
+        <button
+            onClick={handleScavenge}
+            disabled={isLoading || !!currentEvent || !canScavenge}
+            className="bg-yellow-800/50 hover:bg-yellow-700 border border-yellow-500/50 text-yellow-200 font-bold py-3 px-12 rounded-md transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed text-lg font-display"
+        >
+          Lục lọi
+        </button>
         <button
             onClick={handleNextDay}
             disabled={isLoading || !!currentEvent}
